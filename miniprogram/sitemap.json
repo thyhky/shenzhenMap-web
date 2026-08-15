@@ -1,4 +1,11 @@
 {
   "desc": "深圳住区观察小程序",
-  "rules": []
+  "rules": [
+    {
+      "action": "allow",
+      "page": "pages/index/index",
+      "params": ["*"],
+      "matching": "exact"
+    }
+  ]
 }
