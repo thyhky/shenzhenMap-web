@@ -51,6 +51,14 @@ function priceText(price) {
   return price ? `${(price / 10000).toFixed(1)}万` : '暂无'
 }
 
+function schoolDetailText(school) {
+  return {
+    ...school,
+    phoneText: (school.phones || []).join('、'),
+    zoneText: (school.zones || []).join('、'),
+  }
+}
+
 Page({
   data: {
     loading: true,
@@ -63,6 +71,7 @@ Page({
     streetIndex: 0,
     district: '',
     street: '',
+    keyword: '',
     minWan: 0,
     maxWan: 32,
     pricedOnly: true,
@@ -83,6 +92,7 @@ Page({
     total: 0,
     averagePrice: '-',
     selected: null,
+    selectedLoading: false,
   },
 
   mapContext: null,
@@ -116,7 +126,6 @@ Page({
   },
 
   async loadMap(view = initialRegion, zoom = this.data.scale) {
-    if (this.loadingMap) return
     this.loadingMap = true
     const requestId = ++this.mapRequestId
     this.setData({ loading: true })
@@ -131,6 +140,7 @@ Page({
         pageSize: 20,
         district: this.data.district,
         street: this.data.street,
+        q: this.data.keyword,
       })
       const circles = (map.items || []).map((item) => ({
         latitude: item.lat,
@@ -152,10 +162,12 @@ Page({
         loading: false,
       })
     } catch (error) {
-      this.showError(error)
+      if (requestId === this.mapRequestId) this.showError(error)
     } finally {
-      this.loadingMap = false
-      this.setData({ loading: false })
+      if (requestId === this.mapRequestId) {
+        this.loadingMap = false
+        this.setData({ loading: false })
+      }
     }
   },
 
@@ -215,6 +227,25 @@ Page({
   selectStreet(event) {
     const option = this.data.streetOptions[event.detail.value]
     this.setData({ street: option?.value || '', streetIndex: event.detail.value }, () => this.loadMap())
+  },
+
+  handleKeywordInput(event) {
+    this.setData({ keyword: event.detail.value })
+  },
+
+  applyFilters() {
+    this.loadMap()
+  },
+
+  handlePriceInput(event) {
+    const field = event.currentTarget.dataset.field
+    const value = Number(event.detail.value)
+    if (field === 'min') this.setData({ minWan: Math.min(value, this.data.maxWan) })
+    if (field === 'max') this.setData({ maxWan: Math.max(value, this.data.minWan) })
+  },
+
+  togglePricedOnly() {
+    this.setData({ pricedOnly: !this.data.pricedOnly })
   },
 
   toggleSchools() {
@@ -279,7 +310,7 @@ Page({
     })
     if (!nearest || nearestDistance > threshold) return
     if (nearest.kind === 'school') {
-      this.setData({ selected: { ...nearest.item, priceText: '' } })
+      this.setData({ selected: { ...schoolDetailText(nearest.item), type: 'school', priceText: '' }, selectedLoading: false })
       return
     }
     const item = nearest.item
@@ -290,6 +321,7 @@ Page({
         scale: Math.min(16, this.data.scale + 2),
         selected: {
           ...item,
+          type: 'cluster',
           name: `${item.count} 个小区`,
           district: '',
           street: '',
@@ -298,7 +330,7 @@ Page({
       })
       return
     }
-    this.setData({ selected: { ...item, priceText: priceText(item.price) } })
+    this.selectEstate(item.id)
   },
 
   handleRegionChange(event) {
@@ -335,8 +367,8 @@ Page({
       latitude: item.lat,
       longitude: item.lng,
       scale: 15,
-      selected: item,
     })
+    this.selectEstate(item.id)
     this.loadMap({
       west: item.lng - delta,
       south: item.lat - delta,
@@ -345,10 +377,43 @@ Page({
     }, 15)
   },
 
+  async selectEstate(id) {
+    this.setData({ selectedLoading: true })
+    try {
+      const detail = await request(`/api/estates/${id}`)
+      this.setData({
+        selected: {
+          ...detail,
+          type: 'estate',
+          priceText: priceText(detail.price),
+          nearbySchoolsText: (detail.nearbySchools || []).map((school) => `${school.name} · ${school.distanceMeters}m`).join('；'),
+        },
+        selectedLoading: false,
+      })
+    } catch (error) {
+      this.showError(error)
+      this.setData({ selectedLoading: false })
+    }
+  },
+
+  expandCluster() {
+    const selected = this.data.selected
+    if (!selected || selected.type !== 'cluster') return
+    const zoom = Math.min(16, this.data.scale + 2)
+    const delta = zoom >= 15 ? 0.008 : zoom >= 13 ? 0.02 : 0.05
+    this.setData({ latitude: selected.lat, longitude: selected.lng, scale: zoom })
+    this.loadMap({
+      west: selected.lng - delta,
+      south: selected.lat - delta,
+      east: selected.lng + delta,
+      north: selected.lat + delta,
+    }, zoom)
+  },
+
   handleSchoolTap(event) {
     const index = event.currentTarget.dataset.index
     const school = this.data.schoolCircles?.[index]?.school
-    if (school) this.setData({ selected: { ...school, priceText: '' } })
+    if (school) this.setData({ selected: { ...schoolDetailText(school), type: 'school', priceText: '' } })
   },
 
   clearSelected() {

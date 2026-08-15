@@ -28,6 +28,7 @@
   </view>
 
   <view class="filter-card">
+    <input class="keyword-input" value="{{keyword}}" placeholder="小区名称" bindinput="handleKeywordInput" confirm-type="search" bindconfirm="applyFilters" />
     <picker mode="selector" range="{{districtOptions}}" value="{{districtIndex}}" bindchange="selectDistrict">
       <view class="picker">区域：{{district || '全部区域'}}⌄</view>
     </picker>
@@ -39,6 +40,14 @@
       <button size="mini" bindtap="toggleZones">{{showZones ? '隐藏学区' : '显示学区'}}</button>
       <button size="mini" bindtap="toggleResults">{{showResults ? '隐藏结果' : '显示结果'}}</button>
     </view>
+    <view class="price-row">
+      <text>价格（万/㎡）</text>
+      <input type="number" data-field="min" value="{{minWan}}" bindinput="handlePriceInput" />
+      <text>—</text>
+      <input type="number" data-field="max" value="{{maxWan}}" bindinput="handlePriceInput" />
+    </view>
+    <label class="check-row"><checkbox checked="{{pricedOnly}}" bindtap="togglePricedOnly" />只显示有价小区</label>
+    <button class="apply-button" size="mini" type="primary" bindtap="applyFilters">应用筛选</button>
   </view>
 
   <view wx:if="{{showResults}}" class="results-card">
@@ -53,9 +62,15 @@
 
   <view wx:if="{{selected}}" class="detail-card" bindtap="clearSelected">
     <text class="detail-name">{{selected.name}}</text>
-    <text wx:if="{{selected.levelLabel}}">{{selected.district}} · {{selected.levelLabel}}</text>
+    <text wx:if="{{selected.type === 'cluster'}}">当前范围内的聚合小区</text>
+    <text wx:elif="{{selected.levelLabel}}">{{selected.district}} · {{selected.levelLabel}}</text>
     <text wx:if="{{selected.priceText}}">{{selected.priceText}}/㎡</text>
     <text wx:if="{{selected.address}}">{{selected.address}}</text>
+    <text wx:if="{{selected.phoneText}}">电话：{{selected.phoneText}}</text>
+    <text wx:if="{{selected.zoneText}}">招生社区：{{selected.zoneText}}</text>
+    <text wx:if="{{selected.nearbySchoolsText}}">附近学校：{{selected.nearbySchoolsText}}</text>
+    <button wx:if="{{selected.type === 'cluster'}}" size="mini" type="primary" catchtap="expandCluster">放大查看具体小区</button>
+    <text wx:if="{{selectedLoading}}">正在加载详情…</text>
   </view>
 
   <view wx:if="{{loading}}" class="loading-mask">正在加载地图…</view>
