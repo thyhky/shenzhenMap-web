@@ -55,7 +55,11 @@ Page({
     showSchools: true,
     showZones: true,
     showResults: true,
+    latitude: 22.57,
+    longitude: 114.05,
+    scale: 10,
     markers: [],
+    mapItems: [],
     circles: [],
     estateCircles: [],
     schoolCircles: [],
@@ -96,14 +100,6 @@ Page({
         district: this.data.district,
         street: this.data.street,
       })
-      const markers = (map.items || []).map((item, index) => ({
-        id: index + 1,
-        latitude: item.lat,
-        longitude: item.lng,
-        title: markerTitle(item),
-        callout: { content: markerTitle(item), display: 'BYCLICK', padding: 6, borderRadius: 4 },
-        item,
-      }))
       const circles = (map.items || []).map((item) => ({
         latitude: item.lat,
         longitude: item.lng,
@@ -113,7 +109,8 @@ Page({
         strokeWidth: 1,
       }))
       this.setData({
-        markers,
+        markers: [],
+        mapItems: map.items || [],
         estateCircles: circles,
         circles: this.data.showSchools ? circles.concat(this.data.schoolCircles || []) : circles,
         results: (map.results || []).map((item) => ({ ...item, priceText: priceText(item.price) })),
@@ -143,14 +140,6 @@ Page({
         strokeWidth: 2,
         school: feature.properties,
       }))
-      const schoolMarkers = (schools.features || []).map((feature, index) => ({
-        id: 100000 + index,
-        latitude: feature.geometry.coordinates[1],
-        longitude: feature.geometry.coordinates[0],
-        title: feature.properties.name,
-        callout: { content: feature.properties.name, display: 'BYCLICK', padding: 6, borderRadius: 4 },
-        item: feature.properties,
-      }))
       const polygons = (zones.features || []).map((feature) => ({
         points: polygonCoordinates(feature.geometry),
         strokeColor: feature.properties.level === 'junior' ? '#c93f77aa' : '#6d3fc9aa',
@@ -161,7 +150,6 @@ Page({
       this.setData({
         schoolCircles,
         polygons,
-        markers: this.data.markers.concat(schoolMarkers),
         circles: this.data.showSchools ? (this.data.estateCircles || []).concat(schoolCircles) : (this.data.estateCircles || []),
       })
     } catch (error) {
@@ -188,10 +176,8 @@ Page({
 
   toggleSchools() {
     const showSchools = !this.data.showSchools
-    const schoolMarkers = this.data.markers.filter((item) => item.id < 100000)
     this.setData({
       showSchools,
-      markers: showSchools ? this.data.markers : schoolMarkers,
       circles: showSchools ? (this.data.estateCircles || []).concat(this.data.schoolCircles || []) : (this.data.estateCircles || []),
     })
   },
@@ -206,7 +192,69 @@ Page({
 
   handleMarkerTap(event) {
     const marker = this.data.markers.find((item) => item.id === event.detail.markerId)
-    if (marker) this.setData({ selected: { ...marker.item, priceText: priceText(marker.item.price) } })
+    if (!marker) return
+    if (marker.item.kind === 'cluster') {
+      this.setData({
+        latitude: marker.item.lat,
+        longitude: marker.item.lng,
+        scale: Math.min(16, this.data.scale + 2),
+        selected: {
+          ...marker.item,
+          name: `${marker.item.count} 个小区`,
+          district: '',
+          street: '',
+          priceText: priceText(marker.item.avgPrice),
+        },
+      })
+      return
+    }
+    this.setData({ selected: { ...marker.item, priceText: priceText(marker.item.price) } })
+  },
+
+  handleMapTap(event) {
+    const { latitude, longitude } = event.detail
+    const threshold = Math.max(0.002, 0.04 / Math.pow(2, this.data.scale - 10))
+    const candidates = []
+    if (this.data.showSchools) {
+      this.data.schoolCircles.forEach((circle) => candidates.push({
+        item: circle.school,
+        lat: circle.latitude,
+        lng: circle.longitude,
+        kind: 'school',
+      }))
+    }
+    this.data.mapItems.forEach((item) => candidates.push({ item, lat: item.lat, lng: item.lng, kind: 'estate' }))
+    let nearest = null
+    let nearestDistance = Number.POSITIVE_INFINITY
+    candidates.forEach((candidate) => {
+      const distance = Math.hypot(candidate.lat - latitude, candidate.lng - longitude)
+      if (distance < nearestDistance) {
+        nearest = candidate
+        nearestDistance = distance
+      }
+    })
+    if (!nearest || nearestDistance > threshold) return
+    if (nearest.kind === 'school') {
+      this.setData({ selected: { ...nearest.item, priceText: '' } })
+      return
+    }
+    const item = nearest.item
+    if (item.kind === 'cluster') {
+      this.setData({
+        latitude: item.lat,
+        longitude: item.lng,
+        scale: Math.min(16, this.data.scale + 2),
+        selected: {
+          ...item,
+          name: `${item.count} 个小区`,
+          district: '',
+          street: '',
+          priceText: priceText(item.avgPrice),
+        },
+      })
+      return
+    }
+    this.setData({ selected: { ...item, priceText: priceText(item.price) } })
   },
 
   handleSchoolTap(event) {
