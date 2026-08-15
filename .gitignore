@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+wrangler.jsonc
+CLAUDE.md
+WORK_PLAN.md
+*.env
+*.env.*
+!.env.example
+data/*
+!data/README.md
+seed/*.sql
+seed/update-parts/
+*.log

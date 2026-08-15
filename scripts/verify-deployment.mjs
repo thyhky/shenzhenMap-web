@@ -1,0 +1,170 @@
+import { readFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const baseUrl = process.argv[2] || 'https://map.okzer.xyz'
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const sourceRoot = resolve(projectRoot, 'data')
+
+async function request(path) {
+  const response = await fetch(`${baseUrl}${path}`, { signal: AbortSignal.timeout(90_000) })
+  if (!response.ok) throw new Error(`${path} returned HTTP ${response.status}`)
+  return response
+}
+
+async function get(path) {
+  return (await request(path)).text()
+}
+
+async function api(path) {
+  return (await request(path)).json()
+}
+
+const sourceEstates = JSON.parse(await readFile(resolve(sourceRoot, 'estates.geojson'), 'utf8'))
+const sourceSchools = JSON.parse(await readFile(resolve(sourceRoot, 'schools.geojson'), 'utf8'))
+const expectedEstates = sourceEstates.features.length
+const expectedPriced = sourceEstates.features.filter((feature) => feature.properties.has_price).length
+const expectedSchools = sourceSchools.features.length
+const guangmingEstate = sourceEstates.features.find((feature) => feature.properties.district === '光明区')
+if (!guangmingEstate) throw new Error('No Guangming estate exists in the source data')
+const health = await api('/api/health')
+const metaResponse = await request('/api/meta')
+const meta = await metaResponse.json()
+let cachedMetaResponse
+for (let attempt = 0; attempt < 4; attempt += 1) {
+  cachedMetaResponse = await request('/api/meta')
+  await cachedMetaResponse.body?.cancel()
+  if (cachedMetaResponse.headers.get('X-Worker-Cache') === 'HIT') break
+  await new Promise((resolveDelay) => setTimeout(resolveDelay, 500))
+}
+const search = await api('/api/search?q=%E5%8F%AF%E5%9B%AD&minPrice=0&maxPrice=500000')
+const newSearch = await api('/api/search?q=%E6%B5%B7%E5%BE%B7%E5%9B%AD&minPrice=0&maxPrice=500000')
+const map = await api('/api/estates?west=113.7&south=22.4&east=114.4&north=22.9&zoom=10&minPrice=20000&maxPrice=320000')
+const detail = await api('/api/estates/2')
+const history = await api('/api/estates/2/price-history?limit=100')
+const pageOne = await api('/api/search?q=%E5%8F%AF%E5%9B%AD&minPrice=0&maxPrice=500000&page=1&pageSize=2')
+const pageTwo = await api('/api/search?q=%E5%8F%AF%E5%9B%AD&minPrice=0&maxPrice=500000&page=2&pageSize=2')
+const streets = await api('/api/streets')
+const layerStreets = await api('/api/layers/streets')
+const schools = await api('/api/schools')
+const layerSchools = await api('/api/layers/school-scopes')
+const schoolZones = await api('/api/layers/school-zones')
+const schoolEstate = await api(`/api/estates/${guangmingEstate.properties.id}`)
+const plannedLayerResponse = await fetch(`${baseUrl}/api/layers/transit`)
+await plannedLayerResponse.body?.cancel()
+const html = await get('/')
+const assetPath = html.match(/src="([^"]+\.js)"/)?.[1]
+if (!assetPath) throw new Error('Unable to locate the frontend JavaScript asset')
+const javascript = await get(assetPath)
+const legendColors = ['#315b6d', '#2d817c', '#79a86b', '#e3b657', '#df7b45', '#bb3e45']
+const legacyPaths = ['/estates.js', '/streets.js', '/estates.geojson', '/streets.geojson']
+
+const result = {
+  health: health.status,
+  meta: {
+    districts: meta.districts.length,
+    estates: meta.totals.estates,
+    priced: meta.totals.priced,
+    sourceObservedAt: meta.sourceObservedAt,
+    importedAt: meta.importedAt,
+    recordChangedAt: meta.recordChangedAt,
+  },
+  cache: {
+    first: metaResponse.headers.get('X-Worker-Cache'),
+    second: cachedMetaResponse.headers.get('X-Worker-Cache'),
+    version: cachedMetaResponse.headers.get('X-Data-Version'),
+  },
+  catalog: {
+    scopes: meta.catalog.scopes.map((scope) => ({ id: scope.id, status: scope.status })),
+    hasDisclaimer: Boolean(meta.catalog.disclaimer),
+    layerStreetFeatures: layerStreets.features.length,
+    schoolFeatures: schools.features.length,
+    layerSchoolFeatures: layerSchools.features.length,
+    schoolZoneFeatures: schoolZones.features.length,
+    plannedLayerStatus: plannedLayerResponse.status,
+  },
+  search: {
+    total: search.stats.total,
+    firstResult: search.results[0]?.name ?? null,
+  },
+  newSearch: {
+    total: newSearch.stats.total,
+    firstResult: newSearch.results[0]?.name ?? null,
+  },
+  map: {
+    mode: map.mode,
+    items: map.items.length,
+    total: map.stats.total,
+  },
+  detail: {
+    id: detail.id,
+    name: detail.name,
+    price: detail.price,
+    refPrice: detail.refPrice,
+  },
+  schoolEstate: {
+    id: schoolEstate.id,
+    nearbySchools: schoolEstate.nearbySchools?.length ?? 0,
+  },
+  history: {
+    count: history.history.length,
+    truncated: history.truncated,
+  },
+  pagination: {
+    firstPage: pageOne.results.map((estate) => estate.id),
+    secondPage: pageTwo.results.map((estate) => estate.id),
+    hasMore: pageOne.pagination.hasMore,
+  },
+  streetFeatures: streets.features.length,
+  frontend: {
+    hasApp: html.includes('<div id="app"></div>'),
+    hasSixLegendBands: legendColors.every((color) => javascript.includes(color)),
+    hasMethodologyPanel: javascript.includes('数据来源与方法'),
+    hasSchoolLayer: javascript.includes('显示学校'),
+    hasSchoolZoneLayer: javascript.includes('显示学区范围'),
+  },
+  legacyPaths: await Promise.all(legacyPaths.map(async (path) => {
+    const body = await get(path)
+    return {
+      path,
+      servesSpaFallback: body.includes('<div id="app"></div>'),
+      exposesDataset: /__ESTATES__|__STREETS__|"FeatureCollection"/.test(body),
+    }
+  })),
+}
+
+console.log(JSON.stringify(result, null, 2))
+
+if (
+  result.health !== 'ok' ||
+  result.meta.estates !== expectedEstates ||
+  result.meta.priced !== expectedPriced ||
+  !result.meta.sourceObservedAt ||
+  !result.meta.importedAt ||
+  !result.meta.recordChangedAt ||
+  result.cache.second !== 'HIT' ||
+  !result.cache.version ||
+  result.catalog.scopes.length !== 6 ||
+  result.catalog.scopes.filter((scope) => scope.status === 'active').length !== 4 ||
+  !result.catalog.hasDisclaimer ||
+  result.catalog.layerStreetFeatures !== 78 ||
+  result.catalog.schoolFeatures !== expectedSchools ||
+  result.catalog.layerSchoolFeatures !== expectedSchools ||
+  result.catalog.schoolZoneFeatures !== expectedSchools ||
+  result.catalog.plannedLayerStatus !== 404 ||
+  result.schoolEstate.nearbySchools < 1 ||
+  !detail.refPrice ||
+  result.search.firstResult !== '可园三期' ||
+  result.newSearch.firstResult !== '海德园' ||
+  result.history.count < 1 ||
+  result.pagination.firstPage.some((id) => result.pagination.secondPage.includes(id)) ||
+  result.streetFeatures !== 78 ||
+  !result.frontend.hasApp ||
+  !result.frontend.hasSixLegendBands ||
+  !result.frontend.hasMethodologyPanel ||
+  !result.frontend.hasSchoolLayer ||
+  !result.frontend.hasSchoolZoneLayer ||
+  result.legacyPaths.some((item) => item.exposesDataset)
+) {
+  process.exitCode = 1
+}
