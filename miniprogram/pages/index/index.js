@@ -334,8 +334,11 @@ Page({
   },
 
   handleRegionChange(event) {
-    const detail = event.detail || {}
-    if (detail.type !== 'end' || detail.causedBy === 'update' || !this.mapContext || this.loadingMap) return
+    const rawDetail = event.detail || {}
+    const eventType = rawDetail.type || rawDetail.detail?.type || event.type
+    const causedBy = rawDetail.causedBy || rawDetail.detail?.causedBy || event.causedBy
+    const detail = rawDetail.detail || rawDetail
+    if (eventType !== 'end' || causedBy === 'update' || !this.mapContext) return
     if (this.regionTimer) clearTimeout(this.regionTimer)
     this.regionTimer = setTimeout(() => {
       const region = detail.region
