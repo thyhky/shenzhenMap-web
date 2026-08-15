@@ -28,7 +28,8 @@ function priceColor(price) {
 
 function polygonCoordinates(geometry) {
   if (!geometry || geometry.type !== 'Polygon') return []
-  return geometry.coordinates.map((ring) => ring.map(([longitude, latitude]) => ({ longitude, latitude })))
+  const ring = geometry.coordinates[0] || []
+  return ring.map(([longitude, latitude]) => ({ longitude, latitude }))
 }
 
 function markerTitle(item) {
@@ -46,7 +47,10 @@ Page({
     error: '',
     districts: [],
     districtOptions: ['全部区域'],
+    districtIndex: 0,
     streets: [],
+    streetOptions: [{ name: '全部街道', value: '' }],
+    streetIndex: 0,
     district: '',
     street: '',
     minWan: 0,
@@ -74,6 +78,7 @@ Page({
   mapContext: null,
   loadingMap: false,
   regionTimer: null,
+  mapRequestId: 0,
 
   onLoad() {
     this.mapContext = wx.createMapContext('main-map', this)
@@ -86,7 +91,15 @@ Page({
     try {
       const meta = await request('/api/meta')
       const districts = meta.districts || []
-      this.setData({ districts, districtOptions: ['全部区域'].concat(districts), streets: meta.streets || [] })
+      const streets = meta.streets || []
+      this.setData({
+        districts,
+        districtOptions: ['全部区域'].concat(districts),
+        districtIndex: 0,
+        streets,
+        streetOptions: [{ name: '全部街道', value: '' }].concat(streets),
+        streetIndex: 0,
+      })
     } catch (error) {
       this.showError(error)
     }
@@ -95,6 +108,7 @@ Page({
   async loadMap(view = initialRegion, zoom = this.data.scale) {
     if (this.loadingMap) return
     this.loadingMap = true
+    const requestId = ++this.mapRequestId
     this.setData({ loading: true })
     try {
       const map = await request('/api/estates', {
@@ -116,6 +130,7 @@ Page({
         fillColor: `${priceColor(item.kind === 'cluster' ? item.avgPrice : item.price)}55`,
         strokeWidth: 1,
       }))
+      if (requestId !== this.mapRequestId) return
       this.setData({
         markers: [],
         mapItems: map.items || [],
@@ -177,11 +192,19 @@ Page({
       ? ''
       : this.data.districtOptions[event.detail.value]
     const streets = this.data.streets.filter((item) => !district || item.district === district)
-    this.setData({ district, street: '', streets }, () => this.loadMap())
+    this.setData({
+      district,
+      districtIndex: district ? this.data.districtOptions.indexOf(district) : 0,
+      street: '',
+      streets,
+      streetOptions: [{ name: '全部街道', value: '' }].concat(streets),
+      streetIndex: 0,
+    }, () => this.loadMap())
   },
 
   selectStreet(event) {
-    this.setData({ street: event.detail.value }, () => this.loadMap())
+    const option = this.data.streetOptions[event.detail.value]
+    this.setData({ street: option?.value || '', streetIndex: event.detail.value }, () => this.loadMap())
   },
 
   toggleSchools() {
@@ -269,41 +292,47 @@ Page({
   },
 
   handleRegionChange(event) {
-    if (event.detail?.type !== 'end' || !this.mapContext || this.loadingMap) return
+    const detail = event.detail || {}
+    if (detail.type !== 'end' || detail.causedBy === 'update' || !this.mapContext || this.loadingMap) return
     if (this.regionTimer) clearTimeout(this.regionTimer)
     this.regionTimer = setTimeout(() => {
-      this.mapContext.getRegion({
-        success: (region) => {
-          this.mapContext.getScale({
-            success: (scaleResult) => {
-              const zoom = Math.max(6, Math.min(18, Number(scaleResult.scale || this.data.scale)))
-              this.setData({
-                latitude: region.centerLatitude,
-                longitude: region.centerLongitude,
-                scale: zoom,
-              })
-              this.loadMap({
-                west: region.southwest.longitude,
-                south: region.southwest.latitude,
-                east: region.northeast.longitude,
-                north: region.northeast.latitude,
-              }, zoom)
-            },
-          })
-        },
-      })
+      const region = detail.region
+      const scale = detail.scale
+      if (region && scale) {
+        this.reloadRegion(region, scale)
+        return
+      }
+      this.mapContext.getRegion({ success: (currentRegion) => this.reloadRegion(currentRegion, this.data.scale) })
     }, 350)
+  },
+
+  reloadRegion(region, scale) {
+    const zoom = Math.max(6, Math.min(18, Number(scale || this.data.scale)))
+    this.setData({ latitude: region.centerLatitude, longitude: region.centerLongitude, scale: zoom })
+    this.loadMap({
+      west: region.southwest.longitude,
+      south: region.southwest.latitude,
+      east: region.northeast.longitude,
+      north: region.northeast.latitude,
+    }, zoom)
   },
 
   handleResultTap(event) {
     const item = this.data.results[event.currentTarget.dataset.index]
     if (!item) return
+    const delta = 0.008
     this.setData({
       latitude: item.lat,
       longitude: item.lng,
       scale: 15,
       selected: item,
     })
+    this.loadMap({
+      west: item.lng - delta,
+      south: item.lat - delta,
+      east: item.lng + delta,
+      north: item.lat + delta,
+    }, 15)
   },
 
   handleSchoolTap(event) {

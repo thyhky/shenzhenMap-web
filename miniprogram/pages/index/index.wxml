@@ -28,10 +28,10 @@
   </view>
 
   <view class="filter-card">
-    <picker mode="selector" range="{{districtOptions}}" value="{{district ? districtOptions.indexOf(district) : 0}}" bindchange="selectDistrict">
+    <picker mode="selector" range="{{districtOptions}}" value="{{districtIndex}}" bindchange="selectDistrict">
       <view class="picker">区域：{{district || '全部区域'}}⌄</view>
     </picker>
-    <picker mode="selector" range="{{streets}}" range-key="name" value="{{0}}" bindchange="selectStreet">
+    <picker mode="selector" range="{{streetOptions}}" range-key="name" value="{{streetIndex}}" bindchange="selectStreet">
       <view class="picker">街道：{{street || '全部街道'}}⌄</view>
     </picker>
     <view class="tool-row">
