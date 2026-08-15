@@ -36,6 +36,11 @@ function priceFillColor(price) {
   return '#df9297'
 }
 
+function estateRadius(item, zoom) {
+  if (item.kind === 'cluster') return Math.min(1100, 160 + Math.sqrt(item.count) * 32)
+  return Math.max(12, Math.min(70, 70 / Math.pow(2, Math.max(0, zoom - 12) / 2)))
+}
+
 function polygonCoordinates(geometry) {
   if (!geometry || geometry.type !== 'Polygon') return []
   const ring = geometry.coordinates[0] || []
@@ -145,7 +150,7 @@ Page({
       const circles = (map.items || []).map((item) => ({
         latitude: item.lat,
         longitude: item.lng,
-        radius: item.kind === 'cluster' ? Math.min(1100, 160 + Math.sqrt(item.count) * 32) : 70,
+        radius: estateRadius(item, zoom),
         color: priceColor(item.kind === 'cluster' ? item.avgPrice : item.price),
         fillColor: priceFillColor(item.kind === 'cluster' ? item.avgPrice : item.price),
         strokeWidth: 1,
