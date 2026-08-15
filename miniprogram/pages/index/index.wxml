@@ -1,0 +1,16 @@
+<view class="page">
+  <web-view
+    wx:if="{{mapUrl && !failed}}"
+    src="{{mapUrl}}"
+    bindload="handleLoad"
+    binderror="handleError"
+  ></web-view>
+  <view wx:if="{{loading && !failed}}" class="loading-mask">
+    <view class="loading-card">正在打开深圳住区观察…</view>
+  </view>
+  <view wx:if="{{failed}}" class="error-card">
+    <text class="error-title">页面暂时无法打开</text>
+    <text class="error-copy">请检查网络，或确认微信公众平台已配置 map.okzer.xyz 为业务域名。</text>
+    <button size="mini" type="primary" bindtap="retry">重新加载</button>
+  </view>
+</view>

@@ -1,0 +1,14 @@
+{
+  "pages": [
+    "pages/index/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "深圳住区观察",
+    "navigationBarBackgroundColor": "#faf6ed",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#d9d1c1",
+    "backgroundTextStyle": "light"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

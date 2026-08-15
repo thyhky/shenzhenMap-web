@@ -73,6 +73,17 @@ npm run db:setup:local
 
 `db:setup:local` 只适用于空的本地数据库。已有本地数据时重复执行 seed 可能触发唯一键冲突，应使用 `npm run db:update:local`。
 
+## 微信小程序
+
+`miniprogram/` 提供一个微信原生 `web-view` 容器，直接加载 `https://map.okzer.xyz`，不重复实现地图功能。使用微信开发者工具导入该目录，并将 `project.config.json` 中的 `touristappid` 替换为自己的 AppID。
+
+发布前需要在微信公众平台配置：
+
+- 业务域名：`map.okzer.xyz`
+- request 合法域名：`map.okzer.xyz`
+
+详细步骤见 [`miniprogram/README.md`](./miniprogram/README.md)。微信域名校验文件属于部署配置，不应提交真实 AppID 或密钥。
+
 ## 数据来源
 
 数据快照存放在 `./data/`，由 `npm run sync:data` 从独立的私有数据车间同步。默认来源是 `C:\code\Codex\fetch_house_prices\webmap`，也可以使用 `DATA_WORKSHOP_PATH` 或 `--from=` 指定其他路径：
