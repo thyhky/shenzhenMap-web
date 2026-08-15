@@ -75,7 +75,19 @@ npm run db:setup:local
 
 ## 数据来源
 
-数据快照存放在 `./data/`，由 `npm run sync:data` 从独立数据车间 `C:\code\Codex\fetch_house_prices\webmap` 同步（可用 `--from=` 覆盖来源路径）：
+数据快照存放在 `./data/`，由 `npm run sync:data` 从独立的私有数据车间同步。默认来源是 `C:\code\Codex\fetch_house_prices\webmap`，也可以使用 `DATA_WORKSHOP_PATH` 或 `--from=` 指定其他路径：
+
+```powershell
+# 默认并列目录
+npm run sync:data
+
+# 指定私有数据车间
+$env:DATA_WORKSHOP_PATH = 'D:\private\shenzhenMap-data\webmap'
+npm run sync:data
+
+# 单次指定来源
+npm run sync:data -- --from='D:\private\shenzhenMap-data\webmap'
+```
 
 - `data/estates.geojson`
 - `data/streets.geojson`

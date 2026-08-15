@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const dataRoot = resolve(projectRoot, 'data')
-const defaultSource = 'C:\\code\\Codex\\fetch_house_prices\\webmap'
+const defaultSource = process.env.DATA_WORKSHOP_PATH || 'C:\\code\\Codex\\fetch_house_prices\\webmap'
 
 const args = process.argv.slice(2)
 if (args.includes('--help') || args.includes('-h')) {
@@ -14,7 +14,7 @@ Copies estates.geojson, streets.geojson, schools.geojson and school_zones.geojso
 workshop's webmap directory into ./data.
 
   --from=DIR   source webmap directory
-               (default: ${defaultSource})`)
+               (default: DATA_WORKSHOP_PATH or ${defaultSource})`)
   process.exit(0)
 }
 const fromArgument = args.find((argument) => argument.startsWith('--from='))
