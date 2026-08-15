@@ -26,6 +26,16 @@ function priceColor(price) {
   return '#bb3e45'
 }
 
+function priceFillColor(price) {
+  if (!price) return '#b7c0bd'
+  if (price < 35000) return '#9ab5c0'
+  if (price < 50000) return '#91c4bd'
+  if (price < 70000) return '#b6d19f'
+  if (price < 90000) return '#ecd28f'
+  if (price < 120000) return '#eab08f'
+  return '#df9297'
+}
+
 function polygonCoordinates(geometry) {
   if (!geometry || geometry.type !== 'Polygon') return []
   const ring = geometry.coordinates[0] || []
@@ -125,9 +135,9 @@ Page({
       const circles = (map.items || []).map((item) => ({
         latitude: item.lat,
         longitude: item.lng,
-        radius: item.kind === 'cluster' ? Math.min(1800, 250 + Math.sqrt(item.count) * 45) : 90,
-        color: `${priceColor(item.kind === 'cluster' ? item.avgPrice : item.price)}88`,
-        fillColor: `${priceColor(item.kind === 'cluster' ? item.avgPrice : item.price)}55`,
+        radius: item.kind === 'cluster' ? Math.min(1100, 160 + Math.sqrt(item.count) * 32) : 70,
+        color: priceColor(item.kind === 'cluster' ? item.avgPrice : item.price),
+        fillColor: priceFillColor(item.kind === 'cluster' ? item.avgPrice : item.price),
         strokeWidth: 1,
       }))
       if (requestId !== this.mapRequestId) return
@@ -159,15 +169,15 @@ Page({
         latitude: feature.geometry.coordinates[1],
         longitude: feature.geometry.coordinates[0],
         radius: 170,
-        color: feature.properties.level === 'junior' ? '#c93f7788' : '#6d3fc988',
-        fillColor: feature.properties.level === 'junior' ? '#c93f7755' : '#6d3fc955',
+        color: feature.properties.level === 'junior' ? '#c93f77' : '#6d3fc9',
+        fillColor: feature.properties.level === 'junior' ? '#f0c6d5' : '#d5c9f2',
         strokeWidth: 2,
         school: feature.properties,
       }))
       const polygons = (zones.features || []).map((feature) => ({
         points: polygonCoordinates(feature.geometry),
-        strokeColor: feature.properties.level === 'junior' ? '#c93f77aa' : '#6d3fc9aa',
-        fillColor: feature.properties.level === 'junior' ? '#c93f7722' : '#6d3fc922',
+        strokeColor: feature.properties.level === 'junior' ? '#c93f77' : '#6d3fc9',
+        fillColor: feature.properties.level === 'junior' ? '#f8e4eb' : '#eee9fa',
         strokeWidth: 2,
         zone: feature.properties,
       }))
