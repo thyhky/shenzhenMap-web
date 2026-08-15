@@ -75,14 +75,13 @@ npm run db:setup:local
 
 ## 微信小程序
 
-`miniprogram/` 提供一个微信原生 `web-view` 容器，直接加载 `https://map.okzer.xyz`，不重复实现地图功能。使用微信开发者工具导入该目录，并将 `project.config.json` 中的 `touristappid` 替换为自己的 AppID。
+`miniprogram/` 提供一个微信原生小程序页面，直接调用 `https://map.okzer.xyz/api/*`，不依赖 `web-view`。使用微信开发者工具导入该目录，并将 `project.config.json` 中的 `touristappid` 替换为自己的 AppID。
 
 发布前需要在微信公众平台配置：
 
-- 业务域名：`map.okzer.xyz`
 - request 合法域名：`map.okzer.xyz`
 
-详细步骤见 [`miniprogram/README.md`](./miniprogram/README.md)。微信域名校验文件属于部署配置，不应提交真实 AppID 或密钥。
+当前不需要业务域名，因为页面不使用 `web-view`。详细步骤见 [`miniprogram/README.md`](./miniprogram/README.md)。不应提交真实 AppID 或密钥。
 
 ## 数据来源
 

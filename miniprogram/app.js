@@ -1,5 +1,5 @@
 App({
   globalData: {
-    mapUrl: 'https://map.okzer.xyz',
+    apiBase: 'https://map.okzer.xyz',
   },
 })

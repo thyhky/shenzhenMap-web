@@ -1,16 +1,70 @@
 <view class="page">
-  <web-view
-    wx:if="{{mapUrl && !failed}}"
-    src="{{mapUrl}}"
-    bindload="handleLoad"
-    binderror="handleError"
-  ></web-view>
-  <view wx:if="{{loading && !failed}}" class="loading-mask">
-    <view class="loading-card">正在打开深圳住区观察…</view>
+  <map
+    id="main-map"
+    class="map"
+    longitude="114.05"
+    latitude="22.57"
+    scale="10"
+    markers="{{markers}}"
+    circles="{{circles}}"
+    polygons="{{showZones ? polygons : []}}"
+    enable-zoom
+    enable-scroll
+    enable-rotate
+    bindmarkertap="handleMarkerTap"
+  ></map>
+
+  <view class="brand-card">
+    <text class="brand-kicker">SHENZHEN · HOUSING ATLAS</text>
+    <text class="title">深圳住区观察</text>
+    <text class="subtitle">小区价格、学校和学区地图</text>
   </view>
-  <view wx:if="{{failed}}" class="error-card">
-    <text class="error-title">页面暂时无法打开</text>
-    <text class="error-copy">请检查网络，或确认微信公众平台已配置 map.okzer.xyz 为业务域名。</text>
-    <button size="mini" type="primary" bindtap="retry">重新加载</button>
+
+  <view class="stats-card">
+    <view><text>小区</text><text class="value">{{total}}</text></view>
+    <view><text>均价</text><text class="value">{{averagePrice}}</text></view>
+  </view>
+
+  <view class="filter-card">
+    <picker mode="selector" range="{{districtOptions}}" value="{{district ? districtOptions.indexOf(district) : 0}}" bindchange="selectDistrict">
+      <view class="picker">区域：{{district || '全部区域'}}⌄</view>
+    </picker>
+    <picker mode="selector" range="{{streets}}" range-key="name" value="{{0}}" bindchange="selectStreet">
+      <view class="picker">街道：{{street || '全部街道'}}⌄</view>
+    </picker>
+    <view class="tool-row">
+      <button size="mini" bindtap="toggleSchools">{{showSchools ? '隐藏学校' : '显示学校'}}</button>
+      <button size="mini" bindtap="toggleZones">{{showZones ? '隐藏学区' : '显示学区'}}</button>
+      <button size="mini" bindtap="toggleResults">{{showResults ? '隐藏结果' : '显示结果'}}</button>
+    </view>
+  </view>
+
+  <view wx:if="{{showResults}}" class="results-card">
+    <view class="results-head"><text>范围结果 {{total}}</text><text class="close" bindtap="toggleResults">收起</text></view>
+    <scroll-view scroll-y class="results-scroll">
+      <view wx:for="{{results}}" wx:key="id" class="result-row">
+        <view><text class="result-name">{{item.name}}</text><text class="result-meta">{{item.district}} · {{item.street}}</text></view>
+        <text class="result-price">{{item.priceText}}</text>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view wx:if="{{showSchools}}" class="school-list">
+    <view wx:for="{{schoolCircles}}" wx:key="index" data-index="{{index}}" bindtap="handleSchoolTap" class="school-chip">
+      {{item.school.name}}
+    </view>
+  </view>
+
+  <view wx:if="{{selected}}" class="detail-card" bindtap="clearSelected">
+    <text class="detail-name">{{selected.name}}</text>
+    <text wx:if="{{selected.levelLabel}}">{{selected.district}} · {{selected.levelLabel}}</text>
+    <text wx:if="{{selected.priceText}}">{{selected.priceText}}/㎡</text>
+    <text wx:if="{{selected.address}}">{{selected.address}}</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading-mask">正在加载地图…</view>
+  <view wx:if="{{error}}" class="error-card">
+    <text>{{error}}</text>
+    <button size="mini" type="primary" bindtap="retry">重试</button>
   </view>
 </view>

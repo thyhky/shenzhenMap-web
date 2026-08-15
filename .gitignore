@@ -13,3 +13,4 @@ data/*
 seed/*.sql
 seed/update-parts/
 *.log
+miniprogram/project.private.config.json
