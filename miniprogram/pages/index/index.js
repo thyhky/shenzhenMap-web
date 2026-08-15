@@ -64,13 +64,19 @@ Page({
     estateCircles: [],
     schoolCircles: [],
     polygons: [],
+    visiblePolygons: [],
     results: [],
     total: 0,
     averagePrice: '-',
     selected: null,
   },
 
+  mapContext: null,
+  loadingMap: false,
+  regionTimer: null,
+
   onLoad() {
+    this.mapContext = wx.createMapContext('main-map', this)
     this.loadMeta()
     this.loadMap()
     this.loadSchools()
@@ -86,12 +92,14 @@ Page({
     }
   },
 
-  async loadMap() {
+  async loadMap(view = initialRegion, zoom = this.data.scale) {
+    if (this.loadingMap) return
+    this.loadingMap = true
     this.setData({ loading: true })
     try {
       const map = await request('/api/estates', {
-        ...initialRegion,
-        zoom: 10,
+        ...view,
+        zoom,
         minPrice: this.data.minWan * 10000,
         maxPrice: this.data.maxWan * 10000,
         pricedOnly: this.data.pricedOnly ? 1 : 0,
@@ -121,6 +129,7 @@ Page({
     } catch (error) {
       this.showError(error)
     } finally {
+      this.loadingMap = false
       this.setData({ loading: false })
     }
   },
@@ -150,6 +159,7 @@ Page({
       this.setData({
         schoolCircles,
         polygons,
+        visiblePolygons: this.data.showZones ? polygons : [],
         circles: this.data.showSchools ? (this.data.estateCircles || []).concat(schoolCircles) : (this.data.estateCircles || []),
       })
     } catch (error) {
@@ -183,7 +193,8 @@ Page({
   },
 
   toggleZones() {
-    this.setData({ showZones: !this.data.showZones })
+    const showZones = !this.data.showZones
+    this.setData({ showZones, visiblePolygons: showZones ? this.data.polygons : [] })
   },
 
   toggleResults() {
@@ -255,6 +266,44 @@ Page({
       return
     }
     this.setData({ selected: { ...item, priceText: priceText(item.price) } })
+  },
+
+  handleRegionChange(event) {
+    if (event.detail?.type !== 'end' || !this.mapContext || this.loadingMap) return
+    if (this.regionTimer) clearTimeout(this.regionTimer)
+    this.regionTimer = setTimeout(() => {
+      this.mapContext.getRegion({
+        success: (region) => {
+          this.mapContext.getScale({
+            success: (scaleResult) => {
+              const zoom = Math.max(6, Math.min(18, Number(scaleResult.scale || this.data.scale)))
+              this.setData({
+                latitude: region.centerLatitude,
+                longitude: region.centerLongitude,
+                scale: zoom,
+              })
+              this.loadMap({
+                west: region.southwest.longitude,
+                south: region.southwest.latitude,
+                east: region.northeast.longitude,
+                north: region.northeast.latitude,
+              }, zoom)
+            },
+          })
+        },
+      })
+    }, 350)
+  },
+
+  handleResultTap(event) {
+    const item = this.data.results[event.currentTarget.dataset.index]
+    if (!item) return
+    this.setData({
+      latitude: item.lat,
+      longitude: item.lng,
+      scale: 15,
+      selected: item,
+    })
   },
 
   handleSchoolTap(event) {

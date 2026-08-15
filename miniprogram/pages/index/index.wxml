@@ -7,12 +7,13 @@
     scale="{{scale}}"
     markers="{{markers}}"
     circles="{{circles}}"
-    polygons="{{showZones ? polygons : []}}"
+    polygons="{{visiblePolygons}}"
     enable-zoom
     enable-scroll
     enable-rotate
     bindmarkertap="handleMarkerTap"
     bindtap="handleMapTap"
+    bindregionchange="handleRegionChange"
   ></map>
 
   <view class="brand-card">
@@ -43,7 +44,7 @@
   <view wx:if="{{showResults}}" class="results-card">
     <view class="results-head"><text>范围结果 {{total}}</text><text class="close" bindtap="toggleResults">收起</text></view>
     <scroll-view scroll-y class="results-scroll">
-      <view wx:for="{{results}}" wx:key="id" class="result-row">
+      <view wx:for="{{results}}" wx:key="id" data-index="{{index}}" bindtap="handleResultTap" class="result-row">
         <view><text class="result-name">{{item.name}}</text><text class="result-meta">{{item.district}} · {{item.street}}</text></view>
         <text class="result-price">{{item.priceText}}</text>
       </view>
