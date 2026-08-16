@@ -201,20 +201,29 @@ function drawSchoolZones(collection: SchoolZoneFeatureCollection) {
   schoolZoneLayer.eachLayer((layer) => {
     const feature = (layer as L.GeoJSON).feature as SchoolZoneFeature | null
     const properties = feature?.properties
-    if (properties) {
-      const isOfficial = properties.method === 'official-boundary'
-      layer.bindPopup(popupContent(properties.name, [
-        `${properties.levelLabel} · ${properties.district}`,
-        `覆盖 ${properties.zones.length} 个招生社区`,
-        isOfficial
-          ? '官方划片边界'
-          : '基于官方招生社区名称的近似范围，非官方边界',
-      ]))
-      layer.on('click', () => emit('select-school-zone', feature))
-      layer.bindTooltip(properties.name, { sticky: true, className: 'school-label' })
-    }
-  })
-}
+      if (properties) {
+        const isOfficial = properties.method === 'official-boundary'
+        layer.bindPopup(popupContent(properties.name, [
+          `${properties.levelLabel} · ${properties.district}`,
+          `覆盖 ${properties.zones.length} 个招生社区`,
+          isOfficial
+            ? '官方划片边界'
+            : '基于官方招生社区名称的近似范围，非官方边界',
+        ]))
+        layer.on('click', () => {
+          const school = schoolData?.features.find((item) => item.properties.id === properties.schoolId)
+          if (school) {
+            detailController?.abort()
+            emit('detail-loading', false)
+            emit('select-school', school)
+            return
+          }
+          emit('select-school-zone', feature)
+        })
+        layer.bindTooltip(properties.name, { sticky: true, className: 'school-label' })
+      }
+    })
+  }
 
 function currentMapRequest() {
   if (!map) return

@@ -140,6 +140,16 @@ Page({
   loadingMap: false,
   regionTimer: null,
   mapRequestId: 0,
+  schoolById: {},
+
+  composeCircles(estateCircles = [], schoolCircles = [], showSchools) {
+    const enabled = typeof showSchools === 'boolean' ? showSchools : this.data.showSchools
+    if (!enabled) return estateCircles
+    const maxCircleCount = 980
+    const schoolCount = schoolCircles.length
+    const estateLimit = Math.max(0, maxCircleCount - schoolCount)
+    return estateCircles.slice(0, estateLimit).concat(schoolCircles)
+  },
 
   onLoad() {
     this.mapContext = wx.createMapContext('main-map', this)
@@ -196,7 +206,7 @@ Page({
         markers: [],
         mapItems: map.items || [],
         estateCircles: circles,
-        circles: this.data.showSchools ? circles.concat(this.data.schoolCircles || []) : circles,
+        circles: this.composeCircles(circles, this.data.schoolCircles || []),
         results: (map.results || []).map((item) => ({ ...item, priceText: priceText(item.price) })),
         total: map.stats?.total || 0,
         averagePrice: map.stats?.averagePrice ? `${(map.stats.averagePrice / 10000).toFixed(1)}万` : '-',
@@ -292,7 +302,12 @@ Page({
         request('/api/schools'),
         request('/api/layers/school-zones'),
       ])
-      const schoolCircles = (schools.features || []).map((feature) => ({
+      const schoolById = {}
+      const schoolFeatures = schools.features || []
+      schoolFeatures.forEach((feature) => {
+        schoolById[feature.properties.id] = feature.properties
+      })
+      const schoolCircles = schoolFeatures.map((feature) => ({
         latitude: feature.geometry.coordinates[1],
         longitude: feature.geometry.coordinates[0],
         radius: 170,
@@ -314,8 +329,9 @@ Page({
         schoolCircles,
         polygons,
         visiblePolygons: this.data.showZones ? polygons : [],
-        circles: this.data.showSchools ? (this.data.estateCircles || []).concat(schoolCircles) : (this.data.estateCircles || []),
+        circles: this.composeCircles(this.data.estateCircles || [], schoolCircles),
       })
+      this.schoolById = schoolById
     } catch (error) {
       this.showError(error)
     }
@@ -382,7 +398,7 @@ Page({
     const showSchools = !this.data.showSchools
     this.setData({
       showSchools,
-      circles: showSchools ? (this.data.estateCircles || []).concat(this.data.schoolCircles || []) : (this.data.estateCircles || []),
+      circles: this.composeCircles(this.data.estateCircles || [], this.data.schoolCircles || [], showSchools),
     })
   },
 
@@ -421,12 +437,14 @@ Page({
     if (this.data.showZones && this.data.visiblePolygons?.length) {
       const zone = this.data.visiblePolygons.find((item) => pointInPolygon({ latitude, longitude }, item.points))
       if (zone?.zone) {
+        const linkedSchool = this.schoolById?.[zone.zone.schoolId]
         this.setData({
           selected: {
-            ...schoolDetailText(zone.zone),
+            ...schoolDetailText(linkedSchool || zone.zone),
             type: 'school-zone',
             priceText: '',
             nearbySchoolsText: '',
+            zoneText: (zone.zone.zones || []).join('、'),
           },
           selectedLoading: false,
         })
