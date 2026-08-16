@@ -41,10 +41,32 @@ function estateRadius(item, zoom) {
   return Math.max(12, Math.min(70, 70 / Math.pow(2, Math.max(0, zoom - 12) / 2)))
 }
 
-function polygonCoordinates(geometry) {
-  if (!geometry || geometry.type !== 'Polygon') return []
-  const ring = geometry.coordinates[0] || []
-  return ring.map(([longitude, latitude]) => ({ longitude, latitude }))
+function polygonCoordinateSets(geometry) {
+  if (!geometry) return []
+  if (geometry.type === 'Polygon') {
+    const ring = geometry.coordinates[0] || []
+    return [ring.map(([longitude, latitude]) => ({ longitude, latitude }))]
+  }
+  if (geometry.type === 'MultiPolygon') {
+    return (geometry.coordinates || [])
+      .map((polygon) => (polygon[0] || []).map(([longitude, latitude]) => ({ longitude, latitude })))
+      .filter((points) => points.length >= 3)
+  }
+  return []
+}
+
+function pointInPolygon(point, polygonPoints) {
+  let inside = false
+  for (let i = 0, j = polygonPoints.length - 1; i < polygonPoints.length; j = i++) {
+    const xi = polygonPoints[i].longitude
+    const yi = polygonPoints[i].latitude
+    const xj = polygonPoints[j].longitude
+    const yj = polygonPoints[j].latitude
+    const intersect = ((yi > point.latitude) !== (yj > point.latitude))
+      && (point.longitude < ((xj - xi) * (point.latitude - yi)) / ((yj - yi) || Number.EPSILON) + xi)
+    if (intersect) inside = !inside
+  }
+  return inside
 }
 
 function markerTitle(item) {
@@ -62,6 +84,14 @@ function schoolDetailText(school) {
     phoneText: (school.phones || []).join('、'),
     zoneText: (school.zones || []).join('、'),
   }
+}
+
+function rentText(value) {
+  return value ? `${value.toFixed(2)} 元/㎡/月` : '暂无租金样本'
+}
+
+function rentYieldText(value) {
+  return value || value === 0 ? `${value.toFixed(2)}%` : '暂无租售比'
 }
 
 Page({
@@ -98,6 +128,12 @@ Page({
     averagePrice: '-',
     selected: null,
     selectedLoading: false,
+    rankingSort: 'rentYield',
+    rankingItems: [],
+    rankingTotal: 0,
+    rankingHasMore: false,
+    rankingPage: 1,
+    rankingLoading: false,
   },
 
   mapContext: null,
@@ -124,7 +160,7 @@ Page({
         streets,
         streetOptions: [{ name: '全部街道', value: '' }].concat(streets),
         streetIndex: 0,
-      })
+      }, () => this.loadRanking(1))
     } catch (error) {
       this.showError(error)
     }
@@ -176,6 +212,80 @@ Page({
     }
   },
 
+  async loadRanking(page = 1) {
+    this.setData({ rankingLoading: true })
+    try {
+      const ranking = await request('/api/ranking', {
+        sort: this.data.rankingSort,
+        minSamples: 3,
+        page,
+        pageSize: 20,
+        district: this.data.district,
+        street: this.data.street,
+        q: this.data.keyword,
+        minPrice: this.data.minWan * 10000,
+        maxPrice: this.data.maxWan * 10000,
+        pricedOnly: this.data.pricedOnly ? 1 : 0,
+      })
+      const rows = (ranking.items || []).map((item) => ({
+        ...item,
+        rankLabel: `#${item.rank}`,
+        rankingValue: this.data.rankingSort === 'price'
+          ? priceText(item.price)
+          : rentYieldText(item.rentYield),
+      }))
+      this.setData({
+        rankingItems: rows,
+        rankingTotal: ranking.stats?.total || 0,
+        rankingHasMore: Boolean(ranking.pagination?.hasMore),
+        rankingPage: ranking.pagination?.page || 1,
+        rankingLoading: false,
+      })
+    } catch (error) {
+      this.setData({ rankingLoading: false })
+      this.showError(error)
+    }
+  },
+
+  async loadMoreRanking() {
+    if (!this.data.rankingHasMore || this.data.rankingLoading) return
+    const page = this.data.rankingPage + 1
+    this.setData({ rankingLoading: true })
+    try {
+      const ranking = await request('/api/ranking', {
+        sort: this.data.rankingSort,
+        minSamples: 3,
+        page,
+        pageSize: 20,
+        district: this.data.district,
+        street: this.data.street,
+        q: this.data.keyword,
+        minPrice: this.data.minWan * 10000,
+        maxPrice: this.data.maxWan * 10000,
+        pricedOnly: this.data.pricedOnly ? 1 : 0,
+      })
+      const seen = new Set(this.data.rankingItems.map((item) => item.id))
+      const rows = (ranking.items || [])
+        .filter((item) => !seen.has(item.id))
+        .map((item) => ({
+          ...item,
+          rankLabel: `#${item.rank}`,
+          rankingValue: this.data.rankingSort === 'price'
+            ? priceText(item.price)
+            : rentYieldText(item.rentYield),
+        }))
+      this.setData({
+        rankingItems: this.data.rankingItems.concat(rows),
+        rankingHasMore: Boolean(ranking.pagination?.hasMore),
+        rankingPage: ranking.pagination?.page || page,
+        rankingLoading: false,
+      })
+    } catch (error) {
+      this.setData({ rankingLoading: false })
+      this.showError(error)
+    }
+  },
+
   async loadSchools() {
     try {
       const [schools, zones] = await Promise.all([
@@ -191,13 +301,15 @@ Page({
         strokeWidth: 2,
         school: feature.properties,
       }))
-      const polygons = (zones.features || []).map((feature) => ({
-        points: polygonCoordinates(feature.geometry),
-        strokeColor: feature.properties.level === 'junior' ? '#c93f77' : '#6d3fc9',
-        fillColor: feature.properties.level === 'junior' ? '#f8e4eb' : '#eee9fa',
-        strokeWidth: 2,
-        zone: feature.properties,
-      }))
+      const polygons = (zones.features || []).flatMap((feature) => {
+        return polygonCoordinateSets(feature.geometry).map((points) => ({
+          points,
+          strokeColor: feature.properties.level === 'junior' ? '#c93f77' : '#6d3fc9',
+          fillColor: feature.properties.level === 'junior' ? '#f8e4eb' : '#eee9fa',
+          strokeWidth: 2,
+          zone: feature.properties,
+        }))
+      })
       this.setData({
         schoolCircles,
         polygons,
@@ -226,12 +338,18 @@ Page({
       streets,
       streetOptions: [{ name: '全部街道', value: '' }].concat(streets),
       streetIndex: 0,
-    }, () => this.loadMap())
+    }, () => {
+      this.loadMap()
+      this.loadRanking(1)
+    })
   },
 
   selectStreet(event) {
     const option = this.data.streetOptions[event.detail.value]
-    this.setData({ street: option?.value || '', streetIndex: event.detail.value }, () => this.loadMap())
+    this.setData({ street: option?.value || '', streetIndex: event.detail.value }, () => {
+      this.loadMap()
+      this.loadRanking(1)
+    })
   },
 
   handleKeywordInput(event) {
@@ -240,6 +358,13 @@ Page({
 
   applyFilters() {
     this.loadMap()
+    this.loadRanking(1)
+  },
+
+  switchRankingSort(event) {
+    const sort = event.currentTarget.dataset.sort
+    if (!sort || sort === this.data.rankingSort) return
+    this.setData({ rankingSort: sort }, () => this.loadRanking(1))
   },
 
   handlePriceInput(event) {
@@ -250,7 +375,7 @@ Page({
   },
 
   togglePricedOnly() {
-    this.setData({ pricedOnly: !this.data.pricedOnly })
+    this.setData({ pricedOnly: !this.data.pricedOnly }, () => this.loadRanking(1))
   },
 
   toggleSchools() {
@@ -293,6 +418,21 @@ Page({
 
   handleMapTap(event) {
     const { latitude, longitude } = event.detail
+    if (this.data.showZones && this.data.visiblePolygons?.length) {
+      const zone = this.data.visiblePolygons.find((item) => pointInPolygon({ latitude, longitude }, item.points))
+      if (zone?.zone) {
+        this.setData({
+          selected: {
+            ...schoolDetailText(zone.zone),
+            type: 'school-zone',
+            priceText: '',
+            nearbySchoolsText: '',
+          },
+          selectedLoading: false,
+        })
+        return
+      }
+    }
     const threshold = Math.max(0.002, 0.04 / Math.pow(2, this.data.scale - 10))
     const candidates = []
     if (this.data.showSchools) {
@@ -385,15 +525,37 @@ Page({
     }, 15)
   },
 
+  handleRankingTap(event) {
+    const item = this.data.rankingItems[event.currentTarget.dataset.index]
+    if (!item) return
+    const delta = 0.008
+    this.setData({ latitude: item.lat, longitude: item.lng, scale: 15 })
+    this.selectEstate(item.id)
+    this.loadMap({
+      west: item.lng - delta,
+      south: item.lat - delta,
+      east: item.lng + delta,
+      north: item.lat + delta,
+    }, 15)
+  },
+
   async selectEstate(id) {
     this.setData({ selectedLoading: true })
     try {
       const detail = await request(`/api/estates/${id}`)
+      const bestSchool = detail.bestSchool
+      const degreeTimeText = bestSchool
+        ? `${bestSchool.name}：建议提前持有${bestSchool.holdYearsAdvised || 0}年（学位锁定${bestSchool.lockYears || (bestSchool.level === 'primary' ? 6 : 3)}年）`
+        : ''
       this.setData({
         selected: {
           ...detail,
           type: 'estate',
           priceText: priceText(detail.price),
+          rentText: rentText(detail.rentPrice),
+          rentYieldText: rentYieldText(detail.rentYield),
+          degreeTimeText,
+          degreePolicyNote: bestSchool?.degreePolicyNote || '',
           nearbySchoolsText: (detail.nearbySchools || []).map((school) => `${school.name} · ${school.distanceMeters}m`).join('；'),
         },
         selectedLoading: false,

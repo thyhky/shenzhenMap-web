@@ -14,6 +14,14 @@ function priceText(price: number | null) {
   return price ? `${(price / 10000).toFixed(2)} 万元/㎡` : '暂无有效价格'
 }
 
+function rentText(rentPrice: number | null) {
+  return rentPrice ? `${rentPrice.toFixed(2)} 元/㎡/月` : '暂无租金样本'
+}
+
+function yieldText(rentYield: number | null) {
+  return rentYield !== null && rentYield !== undefined ? `${rentYield.toFixed(2)}%` : '暂无租售比'
+}
+
 const refGap = computed(() => {
   if (!props.estate?.refPrice || !props.estate?.price) return null
   const diff = props.estate.price - props.estate.refPrice
@@ -59,6 +67,11 @@ const chartPoints = computed(() => {
         <h2>{{ estate.name }}</h2>
       </div>
       <div class="detail-price">{{ priceText(estate.price) }}</div>
+      <div class="ref-price">
+        <span>租金估算</span>
+        <strong>{{ rentText(estate.rentPrice) }}</strong>
+        <small>租售比 {{ yieldText(estate.rentYield) }}</small>
+      </div>
       <div v-if="estate.refPrice" class="ref-price">
         <span>官方成交参考价</span>
         <strong>{{ (estate.refPrice / 10000).toFixed(2) }} 万元/㎡</strong>
@@ -73,6 +86,18 @@ const chartPoints = computed(() => {
           <small>约 {{ school.distanceMeters >= 1000 ? `${(school.distanceMeters / 1000).toFixed(1)} km` : `${school.distanceMeters} m` }}</small>
         </div>
         <p>按学校与小区点位直线距离计算，不代表官方招生范围或入学资格。</p>
+      </section>
+      <section v-if="estate.bestSchool" class="nearby-schools">
+        <strong>学位时间参考（就近学校）</strong>
+        <div>
+          <span>{{ estate.bestSchool.name }} · {{ estate.bestSchool.levelLabel }}</span>
+          <small>约 {{ estate.bestSchool.distanceMeters >= 1000 ? `${(estate.bestSchool.distanceMeters / 1000).toFixed(1)} km` : `${estate.bestSchool.distanceMeters} m` }}</small>
+        </div>
+        <p>
+          获取学位前建议持有 {{ estate.bestSchool.holdYearsAdvised ?? 0 }} 年；
+          学位锁定 {{ estate.bestSchool.lockYears ?? (estate.bestSchool.level === 'primary' ? 6 : 3) }} 年（入学后）。
+        </p>
+        <p v-if="estate.bestSchool.degreePolicyNote">{{ estate.bestSchool.degreePolicyNote }}</p>
       </section>
       <section class="price-history" aria-label="价格历史">
         <div class="history-heading">
@@ -101,6 +126,9 @@ const chartPoints = computed(() => {
           </dd>
         </div>
         <div><dt>价格口径</dt><dd>{{ estate.priceSource || '未知' }}</dd></div>
+        <div><dt>租金样本数</dt><dd>{{ estate.rentSamples || 0 }}</dd></div>
+        <div><dt>租金来源</dt><dd>{{ estate.rentSource || '未知' }}</dd></div>
+        <div><dt>租金观测</dt><dd>{{ estate.rentObservedAt || '未知' }}</dd></div>
         <div><dt>来源版本</dt><dd>{{ scope?.sourceVersion || '未知' }}</dd></div>
         <div><dt>来源观测</dt><dd>{{ estate.sourceObservedAt || '未知' }}</dd></div>
         <div><dt>平台导入</dt><dd>{{ estate.importedAt || '未知' }}</dd></div>

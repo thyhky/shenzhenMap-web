@@ -5,6 +5,7 @@ import type {
   MapResponse,
   MetaResponse,
   PriceHistoryResponse,
+  RankingResponse,
   SchoolFeatureCollection,
   SchoolZoneFeatureCollection,
   StreetFeatureCollection,
@@ -105,4 +106,16 @@ export function getEstatePriceHistory(
   limit = 100,
 ): Promise<PriceHistoryResponse> {
   return requestJson(`/api/estates/${id}/price-history?limit=${limit}`, signal)
+}
+
+export function getRanking(
+  filters: EstateFilters,
+  sort: 'price' | 'rentYield',
+  signal?: AbortSignal,
+  page = 1,
+): Promise<RankingResponse> {
+  const params = filterParams(filters, page)
+  params.set('sort', sort)
+  params.set('minSamples', '3')
+  return requestJson(`/api/ranking?${params}`, signal)
 }

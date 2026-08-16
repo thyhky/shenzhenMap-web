@@ -31,6 +31,8 @@ const sourceName = computed(() => {
     <dl class="detail-grid">
       <div><dt>学校地址</dt><dd>{{ school.properties.address }}</dd></div>
       <div><dt>咨询电话</dt><dd>{{ school.properties.phones.join('、') || '未公开' }}</dd></div>
+      <div><dt>建议提前持有</dt><dd>{{ school.properties.holdYearsAdvised ?? 0 }} 年（入学前）</dd></div>
+      <div><dt>学位锁定</dt><dd>{{ school.properties.lockYears ?? (school.properties.level === 'primary' ? 6 : 3) }} 年（入学后）</dd></div>
       <div><dt>公告日期</dt><dd>{{ school.properties.sourcePublished }}</dd></div>
       <div>
         <dt>官方来源</dt>
@@ -41,6 +43,7 @@ const sourceName = computed(() => {
         </dd>
       </div>
     </dl>
+    <p v-if="school.properties.degreePolicyNote" class="detail-disclaimer">{{ school.properties.degreePolicyNote }}</p>
     <section v-if="school.properties.leyoujia" class="school-supplement">
       <div class="history-heading"><strong>乐有家补充</strong><span>公开详情页</span></div>
       <dl class="detail-grid">

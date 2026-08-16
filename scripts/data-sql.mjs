@@ -121,6 +121,11 @@ function estateValues(feature, importedAt) {
     properties.has_price ? 1 : 0,
     properties.price_source,
     properties.ref_price ?? null,
+    properties.rent_price ?? null,
+    properties.rent_yield ?? null,
+    properties.rent_samples ?? 0,
+    properties.rent_source ?? null,
+    properties.rent_observed_at ?? null,
     lng,
     lat,
     importedAt,
@@ -172,6 +177,9 @@ function schoolValues(feature, importedAt) {
     properties.lyj_established,
     properties.lyj_admission_scores,
     JSON.stringify(properties.lyj_nearby_xq ?? []),
+    properties.lock_years ?? null,
+    properties.hold_years_advised ?? null,
+    properties.degree_policy_note ?? null,
     importedAt,
     importedAt,
     1,
@@ -182,7 +190,7 @@ function schoolValues(feature, importedAt) {
 }
 
 export function estateInsert(feature, importedAt) {
-  return `INSERT INTO estates (id, name, district, street, area_name, place_name, price, has_price, price_source, ref_price, lng, lat, updated_at, source_observed_at, imported_at, record_changed_at, is_listed) VALUES (${estateValues(feature, importedAt)});`
+  return `INSERT INTO estates (id, name, district, street, area_name, place_name, price, has_price, price_source, ref_price, rent_price, rent_yield, rent_samples, rent_source, rent_observed_at, lng, lat, updated_at, source_observed_at, imported_at, record_changed_at, is_listed) VALUES (${estateValues(feature, importedAt)});`
 }
 
 export function streetInsert(feature, importedAt) {
@@ -192,7 +200,8 @@ export function streetInsert(feature, importedAt) {
 export function schoolInsert(feature, importedAt) {
   return `INSERT INTO schools (id, name, level, level_label, district, group_name, address, zone_text,
     zones, phones, lng, lat, source_url, source_year, source_published, lyj_school_id, lyj_name,
-    lyj_level, lyj_established, lyj_admission_scores, lyj_nearby_xq, updated_at, imported_at, is_current)
+    lyj_level, lyj_established, lyj_admission_scores, lyj_nearby_xq,
+    lock_years, hold_years_advised, degree_policy_note, updated_at, imported_at, is_current)
     VALUES (${schoolValues(feature, importedAt)});`
 }
 
@@ -206,10 +215,15 @@ export function estateUpsert(feature, importedAt) {
     OR estates.has_price IS NOT excluded.has_price
     OR estates.price_source IS NOT excluded.price_source
     OR estates.ref_price IS NOT excluded.ref_price
+    OR estates.rent_price IS NOT excluded.rent_price
+    OR estates.rent_yield IS NOT excluded.rent_yield
+    OR estates.rent_samples IS NOT excluded.rent_samples
+    OR estates.rent_source IS NOT excluded.rent_source
+    OR estates.rent_observed_at IS NOT excluded.rent_observed_at
     OR estates.lng IS NOT excluded.lng
     OR estates.lat IS NOT excluded.lat
     OR estates.is_listed IS NOT excluded.is_listed`
-  return `INSERT INTO estates (id, name, district, street, area_name, place_name, price, has_price, price_source, ref_price, lng, lat, updated_at, source_observed_at, imported_at, record_changed_at, is_listed) VALUES (${estateValues(feature, importedAt)})
+  return `INSERT INTO estates (id, name, district, street, area_name, place_name, price, has_price, price_source, ref_price, rent_price, rent_yield, rent_samples, rent_source, rent_observed_at, lng, lat, updated_at, source_observed_at, imported_at, record_changed_at, is_listed) VALUES (${estateValues(feature, importedAt)})
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
   district = excluded.district,
@@ -220,6 +234,11 @@ ON CONFLICT(id) DO UPDATE SET
   has_price = excluded.has_price,
   price_source = excluded.price_source,
   ref_price = excluded.ref_price,
+  rent_price = excluded.rent_price,
+  rent_yield = excluded.rent_yield,
+  rent_samples = excluded.rent_samples,
+  rent_source = excluded.rent_source,
+  rent_observed_at = excluded.rent_observed_at,
   lng = excluded.lng,
   lat = excluded.lat,
   source_observed_at = COALESCE(excluded.source_observed_at, estates.source_observed_at),
@@ -282,10 +301,14 @@ export function schoolUpsert(feature, importedAt) {
     OR schools.lyj_established IS NOT excluded.lyj_established
     OR schools.lyj_admission_scores IS NOT excluded.lyj_admission_scores
     OR schools.lyj_nearby_xq IS NOT excluded.lyj_nearby_xq
+    OR schools.lock_years IS NOT excluded.lock_years
+    OR schools.hold_years_advised IS NOT excluded.hold_years_advised
+    OR schools.degree_policy_note IS NOT excluded.degree_policy_note
     OR schools.is_current IS NOT excluded.is_current`
   return `INSERT INTO schools (id, name, level, level_label, district, group_name, address, zone_text,
     zones, phones, lng, lat, source_url, source_year, source_published, lyj_school_id, lyj_name,
-    lyj_level, lyj_established, lyj_admission_scores, lyj_nearby_xq, updated_at, imported_at, is_current)
+    lyj_level, lyj_established, lyj_admission_scores, lyj_nearby_xq,
+    lock_years, hold_years_advised, degree_policy_note, updated_at, imported_at, is_current)
     VALUES (${schoolValues(feature, importedAt)})
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -308,6 +331,9 @@ ON CONFLICT(id) DO UPDATE SET
   lyj_established = excluded.lyj_established,
   lyj_admission_scores = excluded.lyj_admission_scores,
   lyj_nearby_xq = excluded.lyj_nearby_xq,
+  lock_years = excluded.lock_years,
+  hold_years_advised = excluded.hold_years_advised,
+  degree_policy_note = excluded.degree_policy_note,
   updated_at = CASE WHEN ${changed} THEN excluded.imported_at ELSE schools.updated_at END,
   imported_at = excluded.imported_at,
   is_current = excluded.is_current;`

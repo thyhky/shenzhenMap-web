@@ -34,6 +34,11 @@ interface EstateRow {
   has_price: number
   ref_price: number | null
   price_source: string | null
+  rent_price: number | null
+  rent_yield: number | null
+  rent_samples: number | null
+  rent_source: string | null
+  rent_observed_at: string | null
   lng: number
   lat: number
   updated_at: string | null
@@ -64,6 +69,9 @@ interface SchoolRow {
   lyj_established: string | null
   lyj_admission_scores: string | null
   lyj_nearby_xq: string | null
+  lock_years: number | null
+  hold_years_advised: number | null
+  degree_policy_note: string | null
 }
 
 interface SchoolZoneRow {
@@ -126,7 +134,7 @@ const JSON_HEADERS = {
 
 const API_CACHE_CONTROL = 'public, max-age=0, s-maxage=300'
 const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' }
-const CACHE_SCHEMA_VERSION = '6'
+const CACHE_SCHEMA_VERSION = '7'
 
 class HttpError extends Error {
   status: number
@@ -277,6 +285,9 @@ function estateSummary(row: EstateRow) {
     price: row.price,
     hasPrice: Boolean(row.has_price),
     refPrice: row.ref_price ?? null,
+    rentPrice: row.rent_price ?? null,
+    rentYield: row.rent_yield ?? null,
+    rentSamples: row.rent_samples ?? 0,
     lng: row.lng,
     lat: row.lat,
     sourceObservedAt: row.source_observed_at,
@@ -313,6 +324,9 @@ function schoolFeature(row: SchoolRow) {
       sourceUrl: row.source_url,
       sourceYear: row.source_year,
       sourcePublished: row.source_published,
+      lockYears: row.lock_years,
+      holdYearsAdvised: row.hold_years_advised,
+      degreePolicyNote: row.degree_policy_note,
       leyoujia: row.lyj_school_id ? {
         id: row.lyj_school_id,
         name: row.lyj_name,
@@ -416,7 +430,8 @@ async function handleEstates(url: URL, env: Env): Promise<Response> {
   ).bind(...where.values)
 
   const resultsStatement = env.DB.prepare(
-    `SELECT id, name, district, street, place_name, price, has_price, ref_price, lng, lat, updated_at,
+    `SELECT id, name, district, street, place_name, price, has_price, ref_price,
+      rent_price, rent_yield, rent_samples, lng, lat, updated_at,
       source_observed_at, imported_at, record_changed_at
      FROM estates WHERE ${where.sql}
      ORDER BY has_price DESC, price DESC, id ASC LIMIT ? OFFSET ?`,
@@ -637,30 +652,90 @@ async function handleHeatmap(url: URL, env: Env): Promise<Response> {
 async function handleEstateDetail(id: number, env: Env): Promise<Response> {
   const row = await env.DB.prepare(
     `SELECT id, name, district, street, area_name, place_name, price, has_price,
-      ref_price, price_source, lng, lat, updated_at, source_observed_at, imported_at, record_changed_at
+      ref_price, price_source, rent_price, rent_yield, rent_samples, rent_source, rent_observed_at,
+      lng, lat, updated_at, source_observed_at, imported_at, record_changed_at
       FROM estates WHERE id = ? AND is_listed = 1`,
   ).bind(id).first<EstateRow>()
   if (!row) throw new HttpError(404, '未找到该小区')
-  const nearbySchools = row.district === '光明区'
-    ? (await env.DB.prepare(`SELECT id, name, level, level_label, district, group_name, address, zone_text,
-        zones, phones, lng, lat, source_url, source_year, source_published, lyj_school_id, lyj_name,
-        lyj_level, lyj_established, lyj_admission_scores, lyj_nearby_xq
-        FROM schools WHERE is_current = 1 AND district = ?`).bind(row.district).all<SchoolRow>()).results
-      .map((school) => ({
-        id: school.id,
-        name: school.name,
-        levelLabel: school.level_label,
-        distanceMeters: Math.round(distanceMeters(row.lat, row.lng, school.lat, school.lng)),
-      }))
-      .sort((a, b) => a.distanceMeters - b.distanceMeters)
-      .slice(0, 3)
-    : []
+  const nearbySchools = (await env.DB.prepare(`SELECT id, name, level, level_label, district, group_name, address, zone_text,
+      zones, phones, lng, lat, source_url, source_year, source_published, lyj_school_id, lyj_name,
+      lyj_level, lyj_established, lyj_admission_scores, lyj_nearby_xq,
+      lock_years, hold_years_advised, degree_policy_note
+      FROM schools WHERE is_current = 1 AND district = ?`).bind(row.district).all<SchoolRow>()).results
+    .map((school) => ({
+      id: school.id,
+      name: school.name,
+      level: school.level,
+      levelLabel: school.level_label,
+      distanceMeters: Math.round(distanceMeters(row.lat, row.lng, school.lat, school.lng)),
+      lockYears: school.lock_years,
+      holdYearsAdvised: school.hold_years_advised,
+      degreePolicyNote: school.degree_policy_note,
+    }))
+    .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    .slice(0, 3)
+  const bestSchool = nearbySchools[0] ?? null
   return json({
     scope: 'estates',
     ...estateSummary(row),
     areaName: row.area_name,
     priceSource: row.price_source,
+    rentSource: row.rent_source,
+    rentObservedAt: row.rent_observed_at,
+    bestSchool,
     nearbySchools,
+  }, { headers: { 'Cache-Control': API_CACHE_CONTROL } })
+}
+
+async function handleRanking(url: URL, env: Env): Promise<Response> {
+  const filters = parseEstateFilters(url.searchParams)
+  const pagination = parsePagination(url.searchParams)
+  const sort = url.searchParams.get('sort') === 'price' ? 'price' : 'rentYield'
+  const minSamples = integerParam(url.searchParams, 'minSamples', 3, 0, 60)
+  const offset = (pagination.page - 1) * pagination.pageSize
+  const where = buildWhere(filters)
+  const rankingFilterSql = sort === 'price'
+    ? 'has_price = 1'
+    : 'rent_yield IS NOT NULL AND rent_samples >= ?'
+  const rankingFilterValues = sort === 'price' ? [] : [minSamples]
+  const orderBy = sort === 'price' ? 'price DESC, id ASC' : 'rent_yield DESC, id ASC'
+  const [statsResult, resultsResult] = await env.DB.batch([
+    env.DB.prepare(
+      `SELECT COUNT(*) AS total,
+        AVG(rent_yield) AS average_rent_yield,
+        AVG(CASE WHEN has_price = 1 THEN price END) AS average_price
+       FROM estates WHERE ${where.sql} AND ${rankingFilterSql}`,
+    ).bind(...where.values, ...rankingFilterValues),
+    env.DB.prepare(
+      `SELECT id, name, district, street, place_name, price, has_price, ref_price,
+        rent_price, rent_yield, rent_samples, lng, lat, updated_at,
+        source_observed_at, imported_at, record_changed_at
+       FROM estates WHERE ${where.sql} AND ${rankingFilterSql}
+       ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
+    ).bind(...where.values, ...rankingFilterValues, pagination.pageSize, offset),
+  ])
+  const stats = statsResult.results[0] as {
+    total?: number
+    average_rent_yield?: number | null
+    average_price?: number | null
+  } | undefined
+  const rows = resultsResult.results as unknown as EstateRow[]
+  return json({
+    scope: 'estates-ranking',
+    sort,
+    items: rows.map((row, index) => ({
+      rank: offset + index + 1,
+      ...estateSummary(row),
+    })),
+    stats: {
+      total: stats?.total ?? 0,
+      averageRentYield: stats?.average_rent_yield ?? null,
+      averagePrice: stats?.average_price ?? null,
+    },
+    pagination: {
+      ...pagination,
+      hasMore: pagination.page * pagination.pageSize < (stats?.total ?? 0),
+    },
   }, { headers: { 'Cache-Control': API_CACHE_CONTROL } })
 }
 
@@ -710,7 +785,8 @@ async function handleStreets(env: Env): Promise<Response> {
 async function handleSchools(env: Env): Promise<Response> {
   const result = await env.DB.prepare(`SELECT id, name, level, level_label, district, group_name, address,
     zone_text, zones, phones, lng, lat, source_url, source_year, source_published, lyj_school_id, lyj_name,
-    lyj_level, lyj_established, lyj_admission_scores, lyj_nearby_xq
+    lyj_level, lyj_established, lyj_admission_scores, lyj_nearby_xq,
+    lock_years, hold_years_advised, degree_policy_note
     FROM schools WHERE is_current = 1 ORDER BY level, name`).all<SchoolRow>()
   return json({
     type: 'FeatureCollection',
@@ -755,6 +831,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   if (url.pathname === '/api/meta') return handleMeta(env)
   if (url.pathname === '/api/estates') return handleEstates(url, env)
   if (url.pathname === '/api/search') return handleSearch(url, env)
+  if (url.pathname === '/api/ranking') return handleRanking(url, env)
   if (url.pathname === '/api/heatmap') return handleHeatmap(url, env)
   if (url.pathname === '/api/streets' || url.pathname === '/api/layers/streets') return handleStreets(env)
   if (url.pathname === '/api/schools' || url.pathname === '/api/layers/school-scopes') return handleSchools(env)
@@ -811,6 +888,21 @@ function canonicalCachePath(url: URL): string | null {
       pageSize: String(pagination.pageSize),
     })
     return `/api/estates?${params}`
+  }
+  if (url.pathname === '/api/ranking') {
+    const params = new URLSearchParams({
+      sort: url.searchParams.get('sort') === 'price' ? 'price' : 'rentYield',
+      district: url.searchParams.get('district') || '',
+      street: url.searchParams.get('street') || '',
+      q: url.searchParams.get('q') || '',
+      pricedOnly: url.searchParams.get('pricedOnly') === '1' ? '1' : '0',
+      minPrice: url.searchParams.get('minPrice') || '',
+      maxPrice: url.searchParams.get('maxPrice') || '',
+      page: url.searchParams.get('page') || '1',
+      pageSize: url.searchParams.get('pageSize') || '20',
+      minSamples: url.searchParams.get('minSamples') || '3',
+    })
+    return `/api/ranking?${params}`
   }
   const historyMatch = url.pathname.match(/^\/api\/estates\/(\d+)\/price-history$/)
   if (historyMatch) {

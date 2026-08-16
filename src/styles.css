@@ -116,6 +116,12 @@ button { color: inherit; }
 .panel-message { padding: 25px 0; color: #758285; font-size: 12px; line-height: 1.7; text-align: center; }
 .load-more-button { width: 100%; margin-top: 12px; padding: 9px; border: 1px solid #91a09e; border-radius: 3px; background: transparent; color: #315b6d; cursor: pointer; }
 .load-more-button:disabled { cursor: wait; opacity: 0.6; }
+.ranking-content { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 14px; }
+.rank-controls { display: flex; gap: 8px; margin-bottom: 10px; }
+.rank-controls button { border: 1px solid rgba(49,91,109,.34); border-radius: 99px; background: transparent; padding: 5px 10px; color: #315b6d; cursor: pointer; font-size: 11px; }
+.rank-controls button.active { border-color: rgba(182,76,57,.45); background: rgba(182,76,57,.08); color: var(--accent); }
+.ranking-row { align-items: center; }
+.rank-badge { width: 28px; height: 20px; border-radius: 99px; background: #e6d8c2; color: #8a6145; font: 700 10px/20px Consolas, monospace; text-align: center; }
 .map-limit-notice { position: absolute; z-index: 520; right: 330px; bottom: 26px; max-width: 330px; padding: 8px 12px; border: 1px solid rgba(153, 101, 70, 0.35); border-radius: 3px; background: rgba(250, 246, 237, 0.94); color: #80543f; font-size: 11px; line-height: 1.5; }
 .detail-divider { height: 6px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(23,52,58,0.035); }
 .empty-detail { display: grid; justify-items: center; padding: 14px 10px; color: #657579; text-align: center; }

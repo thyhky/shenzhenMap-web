@@ -62,6 +62,9 @@ export interface EstateSummary {
   price: number | null
   hasPrice: boolean
   refPrice: number | null
+  rentPrice: number | null
+  rentYield: number | null
+  rentSamples: number
   lat: number
   lng: number
   sourceObservedAt: string | null
@@ -74,14 +77,41 @@ export interface EstateDetail extends EstateSummary {
   scope: 'estates'
   areaName: string | null
   priceSource: string | null
+  rentSource: string | null
+  rentObservedAt: string | null
+  bestSchool: NearbySchool | null
   nearbySchools: NearbySchool[]
 }
 
 export interface NearbySchool {
   id: string
   name: string
+  level: 'primary' | 'junior'
   levelLabel: string
   distanceMeters: number
+  lockYears: number | null
+  holdYearsAdvised: number | null
+  degreePolicyNote: string | null
+}
+
+export interface RankingItem extends EstateSummary {
+  rank: number
+}
+
+export interface RankingResponse {
+  scope: 'estates-ranking'
+  sort: 'price' | 'rentYield'
+  items: RankingItem[]
+  stats: {
+    total: number
+    averageRentYield: number | null
+    averagePrice: number | null
+  }
+  pagination: {
+    page: number
+    pageSize: number
+    hasMore: boolean
+  }
 }
 
 export interface PriceHistoryPoint {
@@ -198,6 +228,9 @@ export interface SchoolFeature {
     sourceUrl: string
     sourceYear: number
     sourcePublished: string
+    lockYears: number | null
+    holdYearsAdvised: number | null
+    degreePolicyNote: string | null
     leyoujia: SchoolSupplement | null
   }
   geometry: {

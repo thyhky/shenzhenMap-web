@@ -1,12 +1,23 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { getEstatePriceHistory, getHeatmap, getMeta } from './api'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { getEstatePriceHistory, getHeatmap, getMeta, getRanking } from './api'
 import DetailPanel from './components/DetailPanel.vue'
 import FiltersPanel from './components/FiltersPanel.vue'
 import MapView from './components/MapView.vue'
+import RankingPanel from './components/RankingPanel.vue'
 import ResultsPanel from './components/ResultsPanel.vue'
 import SchoolDetailPanel from './components/SchoolDetailPanel.vue'
-import type { EstateDetail, EstateFilters, EstateSummary, HeatmapResponse, MapResponse, MetaResponse, PriceHistoryResponse, SchoolFeature } from './types'
+import type {
+  EstateDetail,
+  EstateFilters,
+  EstateSummary,
+  HeatmapResponse,
+  MapResponse,
+  MetaResponse,
+  PriceHistoryResponse,
+  RankingResponse,
+  SchoolFeature,
+} from './types'
 
 type MobileSheet = 'filters' | 'results' | 'detail' | null
 
@@ -27,6 +38,10 @@ const loadingMore = ref(false)
 const detailLoading = ref(false)
 const historyLoading = ref(false)
 const priceHistory = ref<PriceHistoryResponse | null>(null)
+const rankingSort = ref<'price' | 'rentYield'>('rentYield')
+const ranking = ref<RankingResponse | null>(null)
+const rankingLoading = ref(false)
+const rankingLoadingMore = ref(false)
 const showBoundaries = ref(true)
 const showSchools = ref(true)
 const showSchoolZones = ref(true)
@@ -38,6 +53,8 @@ const mobileSheet = ref<MobileSheet>(null)
 const errorMessage = ref('')
 const mapView = ref<InstanceType<typeof MapView> | null>(null)
 let historyController: AbortController | null = null
+let rankingController: AbortController | null = null
+let rankingTimer: ReturnType<typeof setTimeout> | null = null
 
 const averagePrice = computed(() => {
   const value = snapshot.value?.stats.averagePrice
@@ -94,6 +111,51 @@ function selectResult(value: EstateSummary) {
 
 function loadMoreResults() {
   void mapView.value?.loadMoreResults()
+}
+
+async function loadRanking(page = 1, append = false) {
+  rankingController?.abort()
+  const controller = new AbortController()
+  rankingController = controller
+  if (append) rankingLoadingMore.value = true
+  else rankingLoading.value = true
+  try {
+    const response = await getRanking(filters.value, rankingSort.value, controller.signal, page)
+    if (rankingController !== controller) return
+    if (!append || !ranking.value) {
+      ranking.value = response
+    } else {
+      const ids = new Set(ranking.value.items.map((item) => item.id))
+      ranking.value = {
+        ...response,
+        items: [...ranking.value.items, ...response.items.filter((item) => !ids.has(item.id))],
+      }
+    }
+  } catch (error) {
+    if ((error as Error).name !== 'AbortError') showError((error as Error).message)
+  } finally {
+    if (rankingController === controller) {
+      rankingLoading.value = false
+      rankingLoadingMore.value = false
+    }
+  }
+}
+
+function loadMoreRanking() {
+  if (!ranking.value?.pagination.hasMore) return
+  void loadRanking(ranking.value.pagination.page + 1, true)
+}
+
+function changeRankingSort(sort: 'price' | 'rentYield') {
+  if (rankingSort.value === sort) return
+  rankingSort.value = sort
+}
+
+function scheduleRanking(delay = 300) {
+  if (rankingTimer) clearTimeout(rankingTimer)
+  rankingTimer = setTimeout(() => {
+    void loadRanking(1, false)
+  }, delay)
 }
 
 function showError(message: string) {
@@ -208,12 +270,20 @@ async function exportHeatmap() {
 onMounted(async () => {
   try {
     meta.value = await getMeta()
+    await loadRanking(1, false)
   } catch (error) {
     showError((error as Error).message)
   }
 })
 
-onBeforeUnmount(() => historyController?.abort())
+watch(() => filters.value, () => scheduleRanking(350), { deep: true })
+watch(rankingSort, () => scheduleRanking(0))
+
+onBeforeUnmount(() => {
+  historyController?.abort()
+  rankingController?.abort()
+  if (rankingTimer) clearTimeout(rankingTimer)
+})
 </script>
 
 <template>
@@ -290,6 +360,18 @@ onBeforeUnmount(() => historyController?.abort())
         :loading-more="loadingMore"
         @select="selectResult"
         @load-more="loadMoreResults"
+      />
+      <div class="detail-divider"></div>
+      <RankingPanel
+        :items="ranking?.items ?? []"
+        :total="ranking?.stats.total ?? 0"
+        :loading="rankingLoading"
+        :has-more="ranking?.pagination.hasMore ?? false"
+        :loading-more="rankingLoadingMore"
+        :sort="rankingSort"
+        @select="selectResult"
+        @load-more="loadMoreRanking"
+        @change-sort="changeRankingSort"
       />
       <div class="detail-divider"></div>
       <SchoolDetailPanel v-if="selectedSchool" :school="selectedSchool" :scope="schoolScope" />

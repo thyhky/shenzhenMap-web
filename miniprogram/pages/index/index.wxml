@@ -57,6 +57,23 @@
         <view><text class="result-name">{{item.name}}</text><text class="result-meta">{{item.district}} · {{item.street}}</text></view>
         <text class="result-price">{{item.priceText}}</text>
       </view>
+
+      <view class="ranking-head">
+        <text>小区榜单 {{rankingTotal}}</text>
+        <view class="ranking-switch">
+          <text data-sort="rentYield" class="{{rankingSort === 'rentYield' ? 'active' : ''}}" bindtap="switchRankingSort">租售比</text>
+          <text data-sort="price" class="{{rankingSort === 'price' ? 'active' : ''}}" bindtap="switchRankingSort">价格</text>
+        </view>
+      </view>
+      <view wx:if="{{rankingLoading}}" class="ranking-empty">正在加载榜单…</view>
+      <view wx:for="{{rankingItems}}" wx:key="id" data-index="{{index}}" bindtap="handleRankingTap" class="result-row ranking-row">
+        <view class="rank-row-main">
+          <text class="rank-label">{{item.rankLabel}}</text>
+          <view><text class="result-name">{{item.name}}</text><text class="result-meta">{{item.district}} · {{item.street}}</text></view>
+        </view>
+        <text class="result-price">{{item.rankingValue}}</text>
+      </view>
+      <button wx:if="{{rankingHasMore}}" size="mini" bindtap="loadMoreRanking">加载更多榜单</button>
     </scroll-view>
   </view>
 
@@ -65,9 +82,13 @@
     <text wx:if="{{selected.type === 'cluster'}}">当前范围内的聚合小区</text>
     <text wx:elif="{{selected.levelLabel}}">{{selected.district}} · {{selected.levelLabel}}</text>
     <text wx:if="{{selected.priceText}}">{{selected.priceText}}/㎡</text>
+    <text wx:if="{{selected.rentText}}">租金：{{selected.rentText}}</text>
+    <text wx:if="{{selected.rentYieldText}}">租售比：{{selected.rentYieldText}}</text>
     <text wx:if="{{selected.address}}">{{selected.address}}</text>
     <text wx:if="{{selected.phoneText}}">电话：{{selected.phoneText}}</text>
     <text wx:if="{{selected.zoneText}}">招生社区：{{selected.zoneText}}</text>
+    <text wx:if="{{selected.degreeTimeText}}">学位时间：{{selected.degreeTimeText}}</text>
+    <text wx:if="{{selected.degreePolicyNote}}">政策：{{selected.degreePolicyNote}}</text>
     <text wx:if="{{selected.nearbySchoolsText}}">附近学校：{{selected.nearbySchoolsText}}</text>
     <button wx:if="{{selected.type === 'cluster'}}" size="mini" type="primary" catchtap="expandCluster">放大查看具体小区</button>
     <text wx:if="{{selectedLoading}}">正在加载详情…</text>
