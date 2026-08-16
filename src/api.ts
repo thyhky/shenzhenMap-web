@@ -119,3 +119,10 @@ export function getRanking(
   params.set('minSamples', '3')
   return requestJson(`/api/ranking?${params}`, signal)
 }
+
+export function getRankingExportUrl(filters: EstateFilters): string {
+  const params = filterParams(filters, 1)
+  params.set('minSamples', '3')
+  params.set('limit', '5000')
+  return `/api/export/rent-yield.csv?${params}`
+}

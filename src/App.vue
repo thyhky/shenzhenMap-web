@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getEstatePriceHistory, getHeatmap, getMeta, getRanking } from './api'
+import { getEstatePriceHistory, getHeatmap, getMeta, getRanking, getRankingExportUrl } from './api'
 import DetailPanel from './components/DetailPanel.vue'
 import FiltersPanel from './components/FiltersPanel.vue'
 import MapView from './components/MapView.vue'
@@ -267,6 +267,13 @@ async function exportHeatmap() {
   }
 }
 
+function exportDistrictRankingCsv() {
+  const link = document.createElement('a')
+  link.href = getRankingExportUrl(filters.value)
+  link.download = ''
+  link.click()
+}
+
 onMounted(async () => {
   try {
     meta.value = await getMeta()
@@ -335,6 +342,9 @@ onBeforeUnmount(() => {
       <FiltersPanel v-model="filters" :meta="meta" />
       <button class="heatmap-export-button" type="button" :disabled="heatmapLoading" @click="void exportHeatmap()">
         {{ heatmapLoading ? '正在生成…' : '导出当前区域热力图' }}
+      </button>
+      <button class="heatmap-export-button" type="button" @click="exportDistrictRankingCsv()">
+        导出租售比+最佳学校 CSV
       </button>
       <label class="boundary-toggle">
         <input v-model="showBoundaries" type="checkbox">

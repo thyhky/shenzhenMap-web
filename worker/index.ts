@@ -152,6 +152,13 @@ function json(data: unknown, init: ResponseInit = {}): Response {
   })
 }
 
+function csvValue(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  const text = String(value)
+  if (/[",\r\n]/.test(text)) return `"${text.replaceAll('"', '""')}"`
+  return text
+}
+
 function isDirectApiNavigation(request: Request): boolean {
   if (request.method !== 'GET') return false
   const mode = request.headers.get('Sec-Fetch-Mode')
@@ -270,6 +277,33 @@ function buildWhere(filters: EstateFilters, bounds?: Bounds): { sql: string; val
   }
   if (filters.pricedOnly) conditions.push('has_price = 1')
   conditions.push('((has_price = 0 AND ? = 0) OR (has_price = 1 AND price BETWEEN ? AND ?))')
+  values.push(filters.pricedOnly ? 1 : 0)
+  values.push(filters.minPrice, filters.maxPrice)
+  return { sql: conditions.join(' AND '), values }
+}
+
+function buildEstateWhere(filters: EstateFilters, alias: string, bounds?: Bounds): { sql: string; values: unknown[] } {
+  const prefix = alias ? `${alias}.` : ''
+  const conditions: string[] = [`${prefix}is_listed = 1`]
+  const values: unknown[] = []
+  if (bounds) {
+    conditions.push(`${prefix}lng BETWEEN ? AND ?`, `${prefix}lat BETWEEN ? AND ?`)
+    values.push(bounds.west, bounds.east, bounds.south, bounds.north)
+  }
+  if (filters.district) {
+    conditions.push(`${prefix}district = ?`)
+    values.push(filters.district)
+  }
+  if (filters.street) {
+    conditions.push(`${prefix}street = ?`)
+    values.push(filters.street)
+  }
+  if (filters.keyword) {
+    conditions.push(`${prefix}name LIKE ? ESCAPE '\\'`)
+    values.push(`%${filters.keyword.replace(/[\\%_]/g, '\\$&')}%`)
+  }
+  if (filters.pricedOnly) conditions.push(`${prefix}has_price = 1`)
+  conditions.push(`((${prefix}has_price = 0 AND ? = 0) OR (${prefix}has_price = 1 AND ${prefix}price BETWEEN ? AND ?))`)
   values.push(filters.pricedOnly ? 1 : 0)
   values.push(filters.minPrice, filters.maxPrice)
   return { sql: conditions.join(' AND '), values }
@@ -739,6 +773,133 @@ async function handleRanking(url: URL, env: Env): Promise<Response> {
   }, { headers: { 'Cache-Control': API_CACHE_CONTROL } })
 }
 
+async function handleRankingExport(url: URL, env: Env): Promise<Response> {
+  const filters = parseEstateFilters(url.searchParams)
+  const minSamples = integerParam(url.searchParams, 'minSamples', 3, 0, 60)
+  const limit = integerParam(url.searchParams, 'limit', 5000, 1, 10000)
+  const where = buildEstateWhere(filters, 'e')
+  const result = await env.DB.prepare(
+    `SELECT
+      e.id,
+      e.name,
+      e.district,
+      e.street,
+      e.place_name,
+      e.price,
+      e.rent_price,
+      e.rent_yield,
+      e.rent_samples,
+      e.lng,
+      e.lat,
+      ROW_NUMBER() OVER (ORDER BY e.rent_yield DESC, e.id ASC) AS global_rank,
+      ROW_NUMBER() OVER (PARTITION BY e.district ORDER BY e.rent_yield DESC, e.id ASC) AS district_rank
+    FROM estates e
+    WHERE ${where.sql} AND e.rent_yield IS NOT NULL AND e.rent_samples >= ?
+    ORDER BY e.district ASC, district_rank ASC, e.id ASC
+    LIMIT ?`,
+  ).bind(...where.values, minSamples, limit).all<{
+    id: number
+    name: string
+    district: string
+    street: string
+    place_name: string | null
+    price: number | null
+    rent_price: number | null
+    rent_yield: number | null
+    rent_samples: number | null
+    lng: number
+    lat: number
+    global_rank: number
+    district_rank: number
+  }>()
+
+  const schoolsResult = await env.DB.prepare(
+    `SELECT id, name, district, level_label, lock_years, hold_years_advised, lng, lat
+     FROM schools WHERE is_current = 1`,
+  ).all<{
+    id: string
+    name: string
+    district: string
+    level_label: string
+    lock_years: number | null
+    hold_years_advised: number | null
+    lng: number
+    lat: number
+  }>()
+
+  const schoolsByDistrict = new Map<string, typeof schoolsResult.results>()
+  for (const school of schoolsResult.results) {
+    const list = schoolsByDistrict.get(school.district)
+    if (list) list.push(school)
+    else schoolsByDistrict.set(school.district, [school])
+  }
+
+  const nearestSchool = (row: { district: string; lng: number; lat: number }) => {
+    const schools = schoolsByDistrict.get(row.district) || []
+    let best = null as (typeof schools)[number] | null
+    let bestDistance = Number.POSITIVE_INFINITY
+    for (const school of schools) {
+      const dx = school.lng - row.lng
+      const dy = school.lat - row.lat
+      const dist = dx * dx + dy * dy
+      if (dist < bestDistance) {
+        bestDistance = dist
+        best = school
+      }
+    }
+    return best
+  }
+
+  const header = [
+    'global_rank',
+    'district_rank',
+    'district',
+    'street',
+    'estate_id',
+    'estate_name',
+    'place_name',
+    'price_yuan_per_sqm',
+    'rent_yuan_per_sqm_per_month',
+    'rent_yield_percent',
+    'rent_samples',
+    'best_school_name',
+    'best_school_level',
+    'best_school_lock_years',
+    'best_school_hold_years_advised',
+  ].join(',')
+
+  const rows = result.results.map((row) => {
+    const school = nearestSchool(row)
+    return [
+    row.global_rank,
+    row.district_rank,
+    row.district,
+    row.street,
+    row.id,
+    row.name,
+    row.place_name,
+    row.price,
+    row.rent_price,
+    row.rent_yield,
+    row.rent_samples,
+    school?.name ?? null,
+    school?.level_label ?? null,
+    school?.lock_years ?? null,
+    school?.hold_years_advised ?? null,
+  ].map(csvValue).join(',')
+  })
+
+  const csv = `\ufeff${header}\n${rows.join('\n')}`
+  const filename = 'rent-yield-best-school.csv'
+  return new Response(csv, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
+  })
+}
+
 async function handlePriceHistory(id: number, url: URL, env: Env): Promise<Response> {
   const limit = integerParam(url.searchParams, 'limit', 100, 1, 200)
   const [estateResult, historyResult] = await env.DB.batch([
@@ -821,7 +982,7 @@ async function handleSchoolZones(env: Env): Promise<Response> {
 
 async function handleApi(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url)
-  if (isDirectApiNavigation(request)) {
+  if (isDirectApiNavigation(request) && !url.pathname.startsWith('/api/export/')) {
     return json({ error: 'API 仅供站点页面内部调用' }, { status: 404, headers: NO_STORE_HEADERS })
   }
   if (request.method !== 'GET') {
@@ -832,6 +993,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   if (url.pathname === '/api/estates') return handleEstates(url, env)
   if (url.pathname === '/api/search') return handleSearch(url, env)
   if (url.pathname === '/api/ranking') return handleRanking(url, env)
+  if (url.pathname === '/api/export/rent-yield.csv') return handleRankingExport(url, env)
   if (url.pathname === '/api/heatmap') return handleHeatmap(url, env)
   if (url.pathname === '/api/streets' || url.pathname === '/api/layers/streets') return handleStreets(env)
   if (url.pathname === '/api/schools' || url.pathname === '/api/layers/school-scopes') return handleSchools(env)
