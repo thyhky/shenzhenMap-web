@@ -27,9 +27,15 @@ const DEFAULT_MIN_WAN = 2
 const DEFAULT_MAX_WAN = 32
 const DEFAULT_VIEW: { center: [number, number]; zoom: number } = { center: [22.6508, 114.0745], zoom: 11 }
 
-function clampWan(value: string | null, fallback: number) {
+function readNumber(value: string | null): number | null {
+  if (value === null || value === '') return null
   const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return fallback
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function clampWan(value: string | null, fallback: number) {
+  const parsed = readNumber(value)
+  if (parsed === null) return fallback
   return Math.min(32, Math.max(0, parsed))
 }
 
@@ -42,9 +48,9 @@ function readUrlState(): {
 } {
   const params = new URLSearchParams(window.location.search)
   const sortValue = params.get('sort') || ''
-  const lat = Number(params.get('lat'))
-  const lng = Number(params.get('lng'))
-  const zoom = Number(params.get('zoom'))
+  const lat = readNumber(params.get('lat'))
+  const lng = readNumber(params.get('lng'))
+  const zoom = readNumber(params.get('zoom'))
   return {
     filters: {
       district: params.get('district') || '',
@@ -58,7 +64,7 @@ function readUrlState(): {
     showBoundaries: params.get('bounds') !== '0',
     showSchools: params.get('schools') === '1',
     showSchoolZones: params.get('zones') === '1',
-    view: [lat, lng, zoom].every(Number.isFinite) ? { center: [lat, lng], zoom } : DEFAULT_VIEW,
+    view: lat !== null && lng !== null && zoom !== null ? { center: [lat, lng], zoom } : DEFAULT_VIEW,
   }
 }
 

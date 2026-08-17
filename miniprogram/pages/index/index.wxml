@@ -63,6 +63,7 @@
     </view>
   </view>
   <view wx:if="{{!showFilters}}" class="filter-reopen" bindtap="toggleFilters">筛选</view>
+  <view wx:if="{{!showResults}}" class="filter-reopen results-reopen" bindtap="toggleResults">结果</view>
 
   <view wx:if="{{showResults}}" class="results-card">
     <view class="results-head"><text>范围结果 {{total}}</text><text class="close" bindtap="toggleResults">×</text></view>
