@@ -17,10 +17,16 @@
 
 - request 合法域名：`https://map.okzer.xyz`
 
-当前没有使用 `web-view`、WebSocket、`wx.uploadFile` 或 `wx.downloadFile`，因此暂时不需要配置业务域名、socket 合法域名、uploadFile 合法域名或 downloadFile 合法域名。
+当前没有使用 `web-view`、WebSocket 或 `wx.uploadFile`，因此暂时不需要配置业务域名、socket 合法域名或 uploadFile 合法域名。
+
+当前原生页已支持“导出租售比+最佳学校 CSV”（`wx.downloadFile` + `wx.openDocument`）和“导出当前区域热力图”（画布渲染 + `wx.saveImageToPhotosAlbum`），发布前需在小程序后台额外配置：
+
+- downloadFile 合法域名：`https://map.okzer.xyz`
+- 相册保存权限：用户首次导出热力图时弹出授权；若用户拒绝，需要在“设置 → 隐私与权限”中开启相册权限
+- 隐私保护指引：使用 `wx.saveImageToPhotosAlbum` 需在小程序后台声明“相册（仅写入）权限”用途（属于隐私接口）
 
 ## 运行边界
 
 - 小程序直接使用 `wx.request` 调用线上 Worker API，因此需要网络连接和 request 合法域名配置。
-- 当前原生版本实现了小区、聚合点、学校、学区、行政区/街道筛选和结果列表。
+- 当前原生版本实现了小区、聚合点、学校、学区、行政区/街道筛选、结果列表、租售比/价格榜单、小区价格历史与趋势、官方参考价对比、CSV 导出、热力图导出和数据来源说明。
 - 真机测试时重点检查地图性能、网络错误、权限提示和不同屏幕尺寸。

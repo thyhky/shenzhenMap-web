@@ -80,6 +80,7 @@ npm run db:setup:local
 发布前需要在微信公众平台配置：
 
 - request 合法域名：`map.okzer.xyz`
+- downloadFile 合法域名：`map.okzer.xyz`（用于导出租售比+最佳学校 CSV）
 
 当前不需要业务域名，因为页面不使用 `web-view`。详细步骤见 [`miniprogram/README.md`](./miniprogram/README.md)。不应提交真实 AppID 或密钥。
 

@@ -1,3 +1,5 @@
+export type EstateSort = 'price-desc' | 'price-asc' | 'rent-yield'
+
 export interface EstateFilters {
   district: string
   street: string
@@ -5,6 +7,7 @@ export interface EstateFilters {
   pricedOnly: boolean
   minWan: number
   maxWan: number
+  sort: EstateSort
 }
 
 export interface StreetOption {

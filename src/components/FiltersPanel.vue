@@ -31,11 +31,12 @@ function update(patch: Partial<EstateFilters>) {
 
 function reset() {
   emit('update:modelValue', {
+    ...props.modelValue,
     district: '',
     street: '',
     keyword: '',
     pricedOnly: true,
-    minWan: 0,
+    minWan: 2,
     maxWan: 32,
   })
 }

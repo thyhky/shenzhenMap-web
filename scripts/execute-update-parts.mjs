@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { runWrangler } from './run-wrangler.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const partsRoot = resolve(projectRoot, 'seed', 'update-parts')
@@ -30,7 +31,9 @@ if (!Number.isSafeInteger(start) || start < 1 || start > manifest.parts.length) 
 for (const [index, name] of manifest.parts.entries()) {
   if (index + 1 < start) continue
   console.log(`Applying update part ${index + 1}/${manifest.parts.length}: ${name}`)
-  execFileSync(process.execPath, [
-    wrangler, 'd1', 'execute', 'DB', '--remote', '--file', resolve(partsRoot, name),
-  ], { cwd: projectRoot, stdio: 'inherit' })
+  await runWrangler(wrangler, ['d1', 'execute', 'DB', '--remote', '--file', resolve(partsRoot, name)], {
+    cwd: projectRoot,
+    donePatterns: [/"success": true/, /executed successfully/i],
+    failPatterns: [/^X /, /"success": false/, /fetch failed/i, /ERROR/i],
+  })
 }

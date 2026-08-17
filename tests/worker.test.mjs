@@ -44,12 +44,16 @@ class D1Mock {
 class MemoryCache {
   values = new Map()
 
+  keyOf(request) {
+    return typeof request === 'string' ? request : request.url
+  }
+
   async match(request) {
-    return this.values.get(request.url)?.clone()
+    return this.values.get(this.keyOf(request))?.clone()
   }
 
   async put(request, response) {
-    this.values.set(request.url, response.clone())
+    this.values.set(this.keyOf(request), response.clone())
   }
 }
 
@@ -66,6 +70,9 @@ async function setup() {
     '0008_ref_price.sql',
     '0009_schools.sql',
     '0010_school_zones.sql',
+    '0011_estate_rent.sql',
+    '0012_school_degree_policy.sql',
+    '0013_estates_listing_price_index.sql',
   ]) {
     database.exec(await readFile(resolve('migrations', name), 'utf8'))
   }
@@ -160,7 +167,7 @@ async function setup() {
     await Promise.all(pending)
     return response
   }
-  return { database, request }
+  return { database, env, request }
 }
 
 test('worker paginates results and canonicalizes map cache keys', async () => {
@@ -256,4 +263,68 @@ test('school zones layer exposes approximate zone polygons', async () => {
   assert.equal(feature.geometry.type, 'Polygon')
   const cached = await request('/api/layers/school-zones')
   assert.equal(cached.headers.get('X-Worker-Cache'), 'HIT')
+})
+
+test('cached responses survive D1 failure via version fallback', async () => {
+  const { env, request } = await setup()
+  await request('/api/meta')
+  const hit = await request('/api/meta')
+  assert.equal(hit.headers.get('X-Worker-Cache'), 'HIT')
+  env.DB = { prepare() { throw new Error('D1 unavailable') } }
+  const stillHit = await request('/api/meta')
+  assert.equal(stillHit.status, 200)
+  assert.equal(stillHit.headers.get('X-Worker-Cache'), 'HIT')
+})
+
+test('rate limiting rejects excessive requests', async () => {
+  const { request } = await setup()
+  let last = null
+  for (let i = 0; i < 31; i += 1) {
+    last = await request('/api/search?q=%E6%B5%8B%E8%AF%95&minPrice=0&maxPrice=500000')
+  }
+  assert.equal(last.status, 429)
+  const body = await last.json()
+  assert.equal(body.error, '请求过于频繁，请稍后再试')
+})
+
+test('viewports outside the service area are rejected', async () => {
+  const { request } = await setup()
+  const tooWide = await request('/api/estates?west=110&south=20&east=118&north=25&zoom=10')
+  assert.equal(tooWide.status, 400)
+  const outOfArea = await request('/api/estates?west=120&south=30&east=121&north=31&zoom=10')
+  assert.equal(outOfArea.status, 400)
+})
+
+test('search responses are cached under a canonical key', async () => {
+  const { request } = await setup()
+  const first = await request('/api/search?q=%E6%B5%8B%E8%AF%95&minPrice=0&maxPrice=500000')
+  assert.equal(first.status, 200)
+  assert.equal(first.headers.get('X-Worker-Cache'), 'MISS')
+  const equivalent = await request('/api/search?maxPrice=500000&minPrice=0&q=%E6%B5%8B%E8%AF%95')
+  assert.equal(equivalent.status, 200)
+  assert.equal(equivalent.headers.get('X-Worker-Cache'), 'HIT')
+})
+
+test('estates support sort orderings with distinct cache keys', async () => {
+  const { request } = await setup()
+  const base = '/api/estates?west=113.9&south=22.4&east=114.2&north=22.8&zoom=14&minPrice=0&maxPrice=500000&pageSize=5'
+  const asc = await request(`${base}&sort=price-asc`)
+  const ascBody = await asc.json()
+  assert.equal(asc.headers.get('X-Worker-Cache'), 'MISS')
+  const prices = ascBody.results.map((estate) => estate.price)
+  assert.deepEqual(prices, [...prices].sort((a, b) => a - b))
+
+  const ascAgain = await request(`${base}&sort=price-asc`)
+  assert.equal(ascAgain.headers.get('X-Worker-Cache'), 'HIT')
+
+  const defaultSorted = await request(base)
+  const defaultBody = await defaultSorted.json()
+  assert.notEqual(defaultBody.results[0].id, ascBody.results[0].id)
+
+  const invalidSort = await request(`${base}&sort=hacked`)
+  assert.equal(invalidSort.status, 200)
+  assert.deepEqual(
+    (await invalidSort.json()).results.map((estate) => estate.id),
+    defaultBody.results.map((estate) => estate.id),
+  )
 })

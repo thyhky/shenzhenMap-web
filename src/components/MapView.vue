@@ -21,6 +21,7 @@ const props = defineProps<{
   showBoundaries: boolean
   showSchools: boolean
   showSchoolZones: boolean
+  initialView?: { center: [number, number]; zoom: number } | null
 }>()
 
 const emit = defineEmits<{
@@ -28,6 +29,7 @@ const emit = defineEmits<{
   select: [value: EstateDetail]
   'select-school': [value: SchoolFeature]
   'select-school-zone': [value: SchoolZoneFeature]
+  'viewchange': [view: { center: [number, number]; zoom: number }]
   loading: [value: boolean]
   'loading-more': [value: boolean]
   'detail-loading': [value: boolean]
@@ -391,9 +393,19 @@ watch(() => props.showBoundaries, () => void loadBoundaries())
 watch(() => props.showSchools, () => void loadSchools())
 watch(() => props.showSchoolZones, () => void loadSchoolZones())
 
+function handleMapMove() {
+  if (map) {
+    const center = map.getCenter()
+    emit('viewchange', { center: [center.lat, center.lng], zoom: map.getZoom() })
+  }
+  if (!props.filters.keyword.trim()) scheduleEstates()
+}
+
 onMounted(() => {
   if (!mapRoot.value) return
-  map = L.map(mapRoot.value, { preferCanvas: true, zoomControl: false }).setView([22.57, 114.05], 10)
+  const initialCenter = props.initialView?.center ?? [22.57, 114.05]
+  const initialZoom = props.initialView?.zoom ?? 10
+  map = L.map(mapRoot.value, { preferCanvas: true, zoomControl: false }).setView(initialCenter, initialZoom)
   L.control.zoom({ position: 'bottomright' }).addTo(map)
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
@@ -416,9 +428,7 @@ onMounted(() => {
   }).addTo(map)
   pointsLayer = L.layerGroup().addTo(map)
   schoolLayer = L.layerGroup().addTo(map)
-  map.on('moveend zoomend', () => {
-    if (!props.filters.keyword.trim()) scheduleEstates()
-  })
+  map.on('moveend zoomend', handleMapMove)
   resizeObserver = new ResizeObserver(() => map?.invalidateSize({ pan: false }))
   resizeObserver.observe(mapRoot.value)
   scheduleEstates(0)

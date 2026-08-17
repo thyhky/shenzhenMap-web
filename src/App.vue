@@ -10,6 +10,7 @@ import SchoolDetailPanel from './components/SchoolDetailPanel.vue'
 import type {
   EstateDetail,
   EstateFilters,
+  EstateSort,
   EstateSummary,
   HeatmapResponse,
   MapResponse,
@@ -21,14 +22,49 @@ import type {
 
 type MobileSheet = 'filters' | 'results' | 'detail' | null
 
-const filters = ref<EstateFilters>({
-  district: '',
-  street: '',
-  keyword: '',
-  pricedOnly: true,
-  minWan: 0,
-  maxWan: 32,
-})
+const SORT_VALUES = new Set<EstateSort>(['price-desc', 'price-asc', 'rent-yield'])
+const DEFAULT_MIN_WAN = 2
+const DEFAULT_MAX_WAN = 32
+const DEFAULT_VIEW: { center: [number, number]; zoom: number } = { center: [22.6508, 114.0745], zoom: 11 }
+
+function clampWan(value: string | null, fallback: number) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(32, Math.max(0, parsed))
+}
+
+function readUrlState(): {
+  filters: EstateFilters
+  showBoundaries: boolean
+  showSchools: boolean
+  showSchoolZones: boolean
+  view: { center: [number, number]; zoom: number } | null
+} {
+  const params = new URLSearchParams(window.location.search)
+  const sortValue = params.get('sort') || ''
+  const lat = Number(params.get('lat'))
+  const lng = Number(params.get('lng'))
+  const zoom = Number(params.get('zoom'))
+  return {
+    filters: {
+      district: params.get('district') || '',
+      street: params.get('street') || '',
+      keyword: params.get('q') || '',
+      pricedOnly: params.get('pricedOnly') !== '0',
+      minWan: clampWan(params.get('minWan'), DEFAULT_MIN_WAN),
+      maxWan: clampWan(params.get('maxWan'), DEFAULT_MAX_WAN),
+      sort: SORT_VALUES.has(sortValue as EstateSort) ? sortValue as EstateSort : 'price-desc',
+    },
+    showBoundaries: params.get('bounds') !== '0',
+    showSchools: params.get('schools') === '1',
+    showSchoolZones: params.get('zones') === '1',
+    view: [lat, lng, zoom].every(Number.isFinite) ? { center: [lat, lng], zoom } : DEFAULT_VIEW,
+  }
+}
+
+const urlState = readUrlState()
+
+const filters = ref<EstateFilters>(urlState.filters)
 const meta = ref<MetaResponse | null>(null)
 const snapshot = ref<MapResponse | null>(null)
 const selectedEstate = ref<EstateDetail | null>(null)
@@ -42,9 +78,9 @@ const rankingSort = ref<'price' | 'rentYield'>('rentYield')
 const ranking = ref<RankingResponse | null>(null)
 const rankingLoading = ref(false)
 const rankingLoadingMore = ref(false)
-const showBoundaries = ref(true)
-const showSchools = ref(true)
-const showSchoolZones = ref(true)
+const showBoundaries = ref(urlState.showBoundaries)
+const showSchools = ref(urlState.showSchools)
+const showSchoolZones = ref(urlState.showSchoolZones)
 const sourcePanelOpen = ref(false)
 const showFiltersPanel = ref(true)
 const showResultsPanel = ref(true)
@@ -55,6 +91,8 @@ const mapView = ref<InstanceType<typeof MapView> | null>(null)
 let historyController: AbortController | null = null
 let rankingController: AbortController | null = null
 let rankingTimer: ReturnType<typeof setTimeout> | null = null
+let urlTimer: ReturnType<typeof setTimeout> | null = null
+let lastView: { center: [number, number]; zoom: number } | null = urlState.view
 
 const averagePrice = computed(() => {
   const value = snapshot.value?.stats.averagePrice
@@ -75,6 +113,36 @@ const schoolScope = computed(() => (
 
 function handleSnapshot(value: MapResponse) {
   snapshot.value = value
+}
+
+function handleViewChange(view: { center: [number, number]; zoom: number }) {
+  lastView = view
+  syncUrl()
+}
+
+function syncUrl() {
+  if (urlTimer) clearTimeout(urlTimer)
+  urlTimer = setTimeout(() => {
+    const params = new URLSearchParams()
+    const current = filters.value
+    if (current.district) params.set('district', current.district)
+    if (current.street) params.set('street', current.street)
+    if (current.keyword.trim()) params.set('q', current.keyword.trim())
+    if (!current.pricedOnly) params.set('pricedOnly', '0')
+    if (current.minWan > 0) params.set('minWan', String(current.minWan))
+    if (current.maxWan < 32) params.set('maxWan', String(current.maxWan))
+    if (current.sort !== 'price-desc') params.set('sort', current.sort)
+    if (!showBoundaries.value) params.set('bounds', '0')
+    if (!showSchools.value) params.set('schools', '0')
+    if (!showSchoolZones.value) params.set('zones', '0')
+    if (lastView) {
+      params.set('lat', lastView.center[0].toFixed(4))
+      params.set('lng', lastView.center[1].toFixed(4))
+      params.set('zoom', String(Math.round(lastView.zoom)))
+    }
+    const search = params.toString()
+    window.history.replaceState(null, '', search ? `?${search}` : window.location.pathname)
+  }, 400)
 }
 
 async function handleMapSelect(value: EstateDetail) {
@@ -283,13 +351,15 @@ onMounted(async () => {
   }
 })
 
-watch(() => filters.value, () => scheduleRanking(350), { deep: true })
+watch(() => filters.value, () => { scheduleRanking(350); syncUrl() }, { deep: true })
 watch(rankingSort, () => scheduleRanking(0))
+watch([showBoundaries, showSchools, showSchoolZones], () => syncUrl())
 
 onBeforeUnmount(() => {
   historyController?.abort()
   rankingController?.abort()
   if (rankingTimer) clearTimeout(rankingTimer)
+  if (urlTimer) clearTimeout(urlTimer)
 })
 </script>
 
@@ -301,9 +371,11 @@ onBeforeUnmount(() => {
       :show-boundaries="showBoundaries"
       :show-schools="showSchools"
       :show-school-zones="showSchoolZones"
+      :initial-view="urlState.view"
       @snapshot="handleSnapshot"
       @select="handleMapSelect"
       @select-school="handleSchoolSelect"
+      @viewchange="handleViewChange"
       @loading="loading = $event"
       @loading-more="loadingMore = $event"
       @detail-loading="detailLoading = $event"
@@ -328,17 +400,16 @@ onBeforeUnmount(() => {
     </section>
     <div v-if="mapLimitNotice" class="map-limit-notice" role="status">{{ mapLimitNotice }}</div>
 
-    <div class="panel-visibility-controls">
-      <button type="button" :class="{ active: showFiltersPanel }" @click="showFiltersPanel = !showFiltersPanel">
-        {{ showFiltersPanel ? '隐藏筛选器' : '显示筛选器' }}
-      </button>
-      <button type="button" :class="{ active: showResultsPanel }" @click="showResultsPanel = !showResultsPanel">
-        {{ showResultsPanel ? '隐藏范围结果' : '显示范围结果' }}
-      </button>
+    <div class="panel-reopen-controls">
+      <button v-if="!showFiltersPanel" type="button" @click="showFiltersPanel = true">显示筛选器</button>
+      <button v-if="!showResultsPanel" type="button" @click="showResultsPanel = true">显示范围结果</button>
     </div>
 
     <aside v-if="showFiltersPanel" class="desktop-panel filters-panel">
-      <div class="panel-title"><span>筛选器</span><small>FILTER</small></div>
+      <div class="panel-title">
+        <div class="panel-title-copy"><span>筛选器</span><small>FILTER</small></div>
+        <button type="button" class="panel-close" aria-label="关闭筛选器" @click="showFiltersPanel = false">×</button>
+      </div>
       <FiltersPanel v-model="filters" :meta="meta" />
       <button class="heatmap-export-button" type="button" :disabled="heatmapLoading" @click="void exportHeatmap()">
         {{ heatmapLoading ? '正在生成…' : '导出当前区域热力图' }}
@@ -361,13 +432,17 @@ onBeforeUnmount(() => {
     </aside>
 
     <aside v-if="showResultsPanel" class="desktop-panel insight-panel">
-      <div class="panel-title"><span>范围结果</span><small>RESULTS</small></div>
+      <div class="panel-title">
+        <div class="panel-title-copy"><span>范围结果</span><small>RESULTS</small></div>
+        <button type="button" class="panel-close" aria-label="关闭范围结果" @click="showResultsPanel = false">×</button>
+      </div>
       <ResultsPanel
         :results="snapshot?.results ?? []"
         :total="snapshot?.stats.total ?? 0"
         :loading="loading"
         :has-more="snapshot?.pagination.hasMore ?? false"
         :loading-more="loadingMore"
+        v-model:sort="filters.sort"
         @select="selectResult"
         @load-more="loadMoreResults"
       />
@@ -431,6 +506,7 @@ onBeforeUnmount(() => {
         :loading="loading"
         :has-more="snapshot?.pagination.hasMore ?? false"
         :loading-more="loadingMore"
+        v-model:sort="filters.sort"
         @select="selectResult"
         @load-more="loadMoreResults"
       />

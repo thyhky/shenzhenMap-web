@@ -130,11 +130,15 @@ const JSON_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   'X-Content-Type-Options': 'nosniff',
   'X-Robots-Tag': 'noindex, nofollow, noarchive',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
 }
 
 const API_CACHE_CONTROL = 'public, max-age=0, s-maxage=300'
 const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' }
 const CACHE_SCHEMA_VERSION = '7'
+const VERSION_CACHE_KEY = `https://worker-cache.invalid/${CACHE_SCHEMA_VERSION}/data-version`
+const RATE_LIMIT_WINDOW_SECONDS = 10
+const RATE_LIMITS: Record<string, number> = { map: 60, search: 30, heatmap: 10, export: 10 }
 
 class HttpError extends Error {
   status: number
@@ -212,8 +216,11 @@ function parseBounds(params: URLSearchParams): Bounds {
   if (bounds.west < -180 || bounds.east > 180 || bounds.south < -90 || bounds.north > 90) {
     throw new HttpError(400, '地图坐标超出有效范围')
   }
-  if (bounds.east - bounds.west > 5 || bounds.north - bounds.south > 5) {
+  if (bounds.east - bounds.west > 2 || bounds.north - bounds.south > 1.5) {
     throw new HttpError(400, '地图范围过大')
+  }
+  if (bounds.west < 113.2 || bounds.south < 21.8 || bounds.east > 115.2 || bounds.north > 23.5) {
+    throw new HttpError(400, '地图范围超出服务区域')
   }
   return bounds
 }
@@ -223,6 +230,17 @@ function parseKeyword(params: URLSearchParams): string {
   const escapedPattern = `%${keyword.replace(/[\\%_]/g, '\\$&')}%`
   if (new TextEncoder().encode(escapedPattern).length > 50) throw new HttpError(400, '搜索关键词过长')
   return keyword
+}
+
+const SORT_CLAUSES: Record<string, string> = {
+  'price-desc': 'has_price DESC, price DESC, id ASC',
+  'price-asc': 'has_price DESC, price ASC, id ASC',
+  'rent-yield': 'has_price DESC, rent_yield DESC, id ASC',
+}
+
+function parseSort(params: URLSearchParams): string {
+  const sort = params.get('sort') || ''
+  return SORT_CLAUSES[sort] ? sort : 'price-desc'
 }
 
 function parseEstateFilters(params: URLSearchParams): EstateFilters {
@@ -447,12 +465,14 @@ async function handleMeta(env: Env): Promise<Response> {
 
 async function handleEstates(url: URL, env: Env): Promise<Response> {
   const filters = parseFilters(url.searchParams)
+  const sort = parseSort(url.searchParams)
   const pagination = parsePagination(url.searchParams)
   const offset = (pagination.page - 1) * pagination.pageSize
   const where = buildWhere(filters, filters)
   const broadViewport = filters.east - filters.west > 0.45 || filters.north - filters.south > 0.35
   const shouldCluster = (filters.zoom < 13 || broadViewport) && !filters.keyword
   const cellSize = filters.zoom <= 9 ? 0.035 : filters.zoom <= 11 ? 0.015 : 0.006
+  const orderBy = SORT_CLAUSES[sort]
 
   const statsStatement = env.DB.prepare(
     `SELECT COUNT(*) AS total, SUM(has_price) AS priced,
@@ -468,7 +488,7 @@ async function handleEstates(url: URL, env: Env): Promise<Response> {
       rent_price, rent_yield, rent_samples, lng, lat, updated_at,
       source_observed_at, imported_at, record_changed_at
      FROM estates WHERE ${where.sql}
-     ORDER BY has_price DESC, price DESC, id ASC LIMIT ? OFFSET ?`,
+     ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
   ).bind(...where.values, pagination.pageSize, offset)
 
   const mapStatement = shouldCluster
@@ -485,7 +505,7 @@ async function handleEstates(url: URL, env: Env): Promise<Response> {
       `SELECT id, name, district, street, place_name, price, has_price, ref_price, lng, lat, updated_at,
         source_observed_at, imported_at, record_changed_at
        FROM estates WHERE ${where.sql}
-       ORDER BY has_price DESC, price DESC, id ASC LIMIT 1001`,
+       ORDER BY ${orderBy} LIMIT 1001`,
     ).bind(...where.values)
 
   const [statsResult, resultsResult, mapResult] = await env.DB.batch([
@@ -552,10 +572,12 @@ async function handleEstates(url: URL, env: Env): Promise<Response> {
 
 async function handleSearch(url: URL, env: Env): Promise<Response> {
   const filters = parseEstateFilters(url.searchParams)
+  const sort = parseSort(url.searchParams)
   const pagination = parsePagination(url.searchParams)
   const offset = (pagination.page - 1) * pagination.pageSize
   if (!filters.keyword) throw new HttpError(400, '请输入搜索关键词')
   const where = buildWhere(filters)
+  const orderBy = SORT_CLAUSES[sort]
   const [statsResult, resultsResult, mapResult] = await env.DB.batch([
     env.DB.prepare(
       `SELECT COUNT(*) AS total, SUM(has_price) AS priced,
@@ -569,13 +591,13 @@ async function handleSearch(url: URL, env: Env): Promise<Response> {
       `SELECT id, name, district, street, place_name, price, has_price, ref_price, lng, lat, updated_at,
         source_observed_at, imported_at, record_changed_at
        FROM estates WHERE ${where.sql}
-       ORDER BY has_price DESC, price DESC, id ASC LIMIT ? OFFSET ?`,
+       ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
     ).bind(...where.values, pagination.pageSize, offset),
     env.DB.prepare(
       `SELECT id, name, district, street, place_name, price, has_price, ref_price, lng, lat, updated_at,
         source_observed_at, imported_at, record_changed_at
        FROM estates WHERE ${where.sql}
-       ORDER BY has_price DESC, price DESC, id ASC LIMIT 201`,
+       ORDER BY ${orderBy} LIMIT 201`,
     ).bind(...where.values),
   ])
   const stats = statsResult.results[0] as {
@@ -1031,6 +1053,23 @@ function canonicalCachePath(url: URL): string | null {
     })
     return `/api/heatmap?${params}`
   }
+  if (url.pathname === '/api/search') {
+    const filters = parseEstateFilters(url.searchParams)
+    if (!filters.keyword) return null
+    const pagination = parsePagination(url.searchParams)
+    const params = new URLSearchParams({
+      q: filters.keyword,
+      district: filters.district,
+      street: filters.street,
+      pricedOnly: filters.pricedOnly ? '1' : '0',
+      minPrice: String(filters.minPrice),
+      maxPrice: String(filters.maxPrice),
+      sort: parseSort(url.searchParams),
+      page: String(pagination.page),
+      pageSize: String(pagination.pageSize),
+    })
+    return `/api/search?${params}`
+  }
   if (url.pathname === '/api/estates') {
     const filters = parseFilters(url.searchParams)
     const pagination = parsePagination(url.searchParams)
@@ -1046,6 +1085,7 @@ function canonicalCachePath(url: URL): string | null {
       pricedOnly: filters.pricedOnly ? '1' : '0',
       minPrice: String(filters.minPrice),
       maxPrice: String(filters.maxPrice),
+      sort: parseSort(url.searchParams),
       page: String(pagination.page),
       pageSize: String(pagination.pageSize),
     })
@@ -1082,12 +1122,60 @@ function canonicalCachePath(url: URL): string | null {
   return null
 }
 
-async function dataVersion(env: Env): Promise<string> {
-  const row = await env.DB.prepare(
-    'SELECT value FROM app_metadata WHERE key = ?',
-  ).bind('data_version').first<{ value: string }>()
-  if (!row?.value) throw new Error('Data version is unavailable')
-  return row.value
+async function cachedDataVersion(): Promise<string | null> {
+  try {
+    const cached = await caches.default.match(VERSION_CACHE_KEY)
+    if (!cached) return null
+    const entry = (await cached.json()) as { value?: unknown } | null
+    return typeof entry?.value === 'string' ? entry.value : null
+  } catch {
+    return null
+  }
+}
+
+async function dataVersion(env: Env, ctx: ExecutionContext): Promise<string> {
+  try {
+    const row = await env.DB.prepare(
+      'SELECT value FROM app_metadata WHERE key = ?',
+    ).bind('data_version').first<{ value: string }>()
+    if (!row?.value) throw new Error('Data version is unavailable')
+    ctx.waitUntil(
+      caches.default.put(VERSION_CACHE_KEY, json({ value: row.value }, { headers: NO_STORE_HEADERS })).catch(() => {}),
+    )
+    return row.value
+  } catch (error) {
+    const fallback = await cachedDataVersion()
+    if (fallback) return fallback
+    throw error
+  }
+}
+
+function rateLimitGroup(url: URL): string {
+  if (url.pathname === '/api/search') return 'search'
+  if (url.pathname === '/api/heatmap') return 'heatmap'
+  if (url.pathname.startsWith('/api/export/')) return 'export'
+  return 'map'
+}
+
+async function rateLimit(request: Request, url: URL): Promise<void> {
+  const group = rateLimitGroup(url)
+  const limit = RATE_LIMITS[group]
+  if (!limit) return
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown'
+  const bucket = Math.floor(Date.now() / 1000 / RATE_LIMIT_WINDOW_SECONDS)
+  const key = `https://worker-cache.invalid/rate/${group}/${ip}/${bucket}`
+  let count = 1
+  try {
+    const cached = await caches.default.match(key)
+    if (cached) {
+      const parsed = Number(await cached.text())
+      if (Number.isFinite(parsed)) count = parsed + 1
+    }
+    if (count > limit) throw new HttpError(429, '请求过于频繁，请稍后再试')
+    await caches.default.put(key, new Response(String(count), { headers: NO_STORE_HEADERS }))
+  } catch (error) {
+    if (error instanceof HttpError) throw error
+  }
 }
 
 function withCacheHeaders(response: Response, status: 'HIT' | 'MISS', version: string): Response {
@@ -1108,9 +1196,10 @@ export default {
     }
     try {
       if (request.method !== 'GET') return await handleApi(request, env)
+      await rateLimit(request, url)
       const canonicalPath = canonicalCachePath(url)
       if (!canonicalPath) return await handleApi(request, env)
-      const version = await dataVersion(env)
+      const version = await dataVersion(env, ctx)
       const cacheKey = new Request(
         `https://worker-cache.invalid/${CACHE_SCHEMA_VERSION}/${version}${canonicalPath}`,
       )

@@ -62,6 +62,9 @@ async function database() {
   db.exec(await readFile(resolve('migrations/0008_ref_price.sql'), 'utf8'))
   db.exec(await readFile(resolve('migrations/0009_schools.sql'), 'utf8'))
   db.exec(await readFile(resolve('migrations/0010_school_zones.sql'), 'utf8'))
+  db.exec(await readFile(resolve('migrations/0011_estate_rent.sql'), 'utf8'))
+  db.exec(await readFile(resolve('migrations/0012_school_degree_policy.sql'), 'utf8'))
+  db.exec(await readFile(resolve('migrations/0013_estates_listing_price_index.sql'), 'utf8'))
   return db
 }
 

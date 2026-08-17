@@ -12,5 +12,6 @@ data/*
 !data/README.md
 seed/*.sql
 seed/update-parts/
+backups/
 *.log
 miniprogram/project.private.config.json

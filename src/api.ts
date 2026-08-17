@@ -37,6 +37,7 @@ function mapParams(request: MapRequest, page: number): URLSearchParams {
     zoom: String(Math.round(request.zoom)),
     minPrice: String(Math.round(request.minWan * 10000)),
     maxPrice: String(Math.round(request.maxWan * 10000)),
+    sort: request.sort,
     page: String(page),
     pageSize: '20',
   })
@@ -52,6 +53,7 @@ function filterParams(filters: EstateFilters, page: number): URLSearchParams {
     q: filters.keyword.trim(),
     minPrice: String(Math.round(filters.minWan * 10000)),
     maxPrice: String(Math.round(filters.maxWan * 10000)),
+    sort: filters.sort,
     page: String(page),
     pageSize: '20',
   })

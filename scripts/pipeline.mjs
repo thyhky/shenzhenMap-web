@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { runWrangler } from './run-wrangler.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const wrangler = resolve(projectRoot, 'node_modules', 'wrangler', 'bin', 'wrangler.js')
@@ -25,6 +26,7 @@ One-shot pipeline: sync data -> generate SQL parts -> migrate remote D1
   --sync-from=DIR   source webmap dir for sync-data (default: C:\\code\\Codex\\fetch_house_prices\\webmap)
   --skip-sync       use the existing ./data snapshot without re-syncing
   --start=N         resume applying update parts from part N
+  --skip-backup     do not export the remote D1 backup
   --skip-migrate    do not apply pending D1 migrations
   --skip-deploy     do not build/deploy the worker
   --skip-verify     do not run the production verification
@@ -34,7 +36,7 @@ One-shot pipeline: sync data -> generate SQL parts -> migrate remote D1
 }
 
 const knownFlags = new Set([
-  '--help', '-h', '--skip-sync', '--skip-migrate', '--skip-deploy', '--skip-verify',
+  '--help', '-h', '--skip-sync', '--skip-migrate', '--skip-deploy', '--skip-verify', '--skip-backup',
 ])
 const unknown = args.filter((argument) => {
   const name = argument.includes('=') ? argument.slice(0, argument.indexOf('=')) : argument
@@ -68,12 +70,22 @@ steps.push({
   args: [resolve(projectRoot, 'scripts', 'generate-update.mjs')],
   cwd: projectRoot,
 })
+if (!flag('--skip-backup')) {
+  steps.push({
+    desc: 'Export remote D1 backup (keep newest 14)',
+    cmd: process.execPath,
+    args: [resolve(projectRoot, 'scripts', 'backup-d1.mjs')],
+    cwd: projectRoot,
+  })
+}
 if (!flag('--skip-migrate')) {
   steps.push({
     desc: 'Apply pending D1 migrations (remote)',
     cmd: process.execPath,
     args: [wrangler, 'd1', 'migrations', 'apply', 'DB', '--remote'],
     cwd: projectRoot,
+    donePatterns: [/Successfully created \d+ migration/, /No pending migrations/, /already applied/],
+    failPatterns: [/^X /, /fetch failed/i, /ERROR/i],
   })
 }
 steps.push({
@@ -109,6 +121,8 @@ if (!flag('--skip-deploy')) {
     cmd: process.execPath,
     args: [wrangler, 'deploy'],
     cwd: projectRoot,
+    donePatterns: [/Deployment complete/, /No deployable assets/],
+    failPatterns: [/^X /, /fetch failed/i, /ERROR/i],
   })
 }
 if (!flag('--skip-verify')) {
@@ -125,7 +139,11 @@ for (const [index, step] of steps.entries()) {
   const label = `[${index + 1}/${steps.length}] ${step.desc}`
   console.log(`\n===== ${label} =====`)
   try {
-    execFileSync(step.cmd, step.args, { cwd: step.cwd, stdio: 'inherit' })
+    if (step.donePatterns) {
+      await runWrangler(step.cmd, step.args, { cwd: step.cwd, donePatterns: step.donePatterns })
+    } else {
+      execFileSync(step.cmd, step.args, { cwd: step.cwd, stdio: 'inherit' })
+    }
   } catch (error) {
     console.error(`\n[FAIL] ${label} exited with ${error.status ?? error.code}`)
     process.exit(1)

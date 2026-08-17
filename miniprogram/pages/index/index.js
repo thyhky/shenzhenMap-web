@@ -2,6 +2,13 @@ const app = getApp()
 const apiBase = app.globalData.apiBase
 const initialRegion = { west: 113.75, south: 22.43, east: 114.35, north: 22.86 }
 
+function buildQuery(params) {
+  return Object.keys(params)
+    .filter((key) => params[key] !== undefined && params[key] !== null && params[key] !== '')
+    .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(String(params[key]))}`)
+    .join('&')
+}
+
 function request(path, data = {}) {
   return new Promise((resolve, reject) => {
     wx.request({
@@ -94,6 +101,16 @@ function rentYieldText(value) {
   return value || value === 0 ? `${value.toFixed(2)}%` : '暂无租售比'
 }
 
+function heatmapColor(price) {
+  if (!price) return '#7b8787'
+  if (price < 35000) return '#315b6d'
+  if (price < 50000) return '#2d817c'
+  if (price < 70000) return '#79a86b'
+  if (price < 90000) return '#e3b657'
+  if (price < 120000) return '#df7b45'
+  return '#bb3e45'
+}
+
 Page({
   data: {
     loading: true,
@@ -113,6 +130,8 @@ Page({
     showSchools: true,
     showZones: true,
     showResults: true,
+    showFilters: true,
+    showMoreTools: false,
     latitude: 22.57,
     longitude: 114.05,
     scale: 10,
@@ -124,6 +143,8 @@ Page({
     polygons: [],
     visiblePolygons: [],
     results: [],
+    resultFilter: '',
+    resultFiltered: [],
     total: 0,
     averagePrice: '-',
     selected: null,
@@ -134,6 +155,10 @@ Page({
     rankingHasMore: false,
     rankingPage: 1,
     rankingLoading: false,
+    exportingCsv: false,
+    exportingHeatmap: false,
+    showMethodology: false,
+    catalog: null,
   },
 
   mapContext: null,
@@ -170,6 +195,7 @@ Page({
         streets,
         streetOptions: [{ name: '全部街道', value: '' }].concat(streets),
         streetIndex: 0,
+        catalog: meta.catalog || null,
       }, () => this.loadRanking(1))
     } catch (error) {
       this.showError(error)
@@ -202,12 +228,14 @@ Page({
         strokeWidth: 1,
       }))
       if (requestId !== this.mapRequestId) return
+      const results = (map.results || []).map((item) => ({ ...item, priceText: priceText(item.price) }))
       this.setData({
         markers: [],
         mapItems: map.items || [],
         estateCircles: circles,
         circles: this.composeCircles(circles, this.data.schoolCircles || []),
-        results: (map.results || []).map((item) => ({ ...item, priceText: priceText(item.price) })),
+        results,
+        resultFiltered: this.filterResults(results, this.data.resultFilter),
         total: map.stats?.total || 0,
         averagePrice: map.stats?.averagePrice ? `${(map.stats.averagePrice / 10000).toFixed(1)}万` : '-',
         loading: false,
@@ -411,6 +439,125 @@ Page({
     this.setData({ showResults: !this.data.showResults })
   },
 
+  toggleFilters() {
+    this.setData({ showFilters: !this.data.showFilters })
+  },
+
+  toggleMoreTools() {
+    this.setData({ showMoreTools: !this.data.showMoreTools })
+  },
+
+  toggleMethodology() {
+    this.setData({ showMethodology: !this.data.showMethodology })
+  },
+
+  noop() {},
+
+  exportHeatmap() {
+    if (!this.data.district) {
+      wx.showToast({ title: '请先选择行政区，再导出热力图', icon: 'none' })
+      return
+    }
+    if (this.data.exportingHeatmap) return
+    this.setData({ exportingHeatmap: true })
+    request('/api/heatmap', {
+      district: this.data.district,
+      street: this.data.street,
+      pricedOnly: this.data.pricedOnly ? 1 : 0,
+      minPrice: this.data.minWan * 10000,
+      maxPrice: this.data.maxWan * 10000,
+    }).then((data) => {
+      if (!data.bounds) throw new Error('当前范围没有可导出的数据')
+      this.renderHeatmap(data)
+    }).catch((error) => {
+      this.showError(error)
+      this.setData({ exportingHeatmap: false })
+    })
+  },
+
+  renderHeatmap(data) {
+    wx.createSelectorQuery().in(this).select('#heatmap-canvas').fields({ node: true, size: true }).exec((result) => {
+      if (!result?.[0]?.node) {
+        this.setData({ exportingHeatmap: false })
+        this.showError(new Error('画布初始化失败，请重试'))
+        return
+      }
+      const canvas = result[0].node
+      const width = result[0].width
+      const height = result[0].height
+      canvas.width = width
+      canvas.height = height
+      const context = canvas.getContext('2d')
+      const padding = 24
+      const drawWidth = width - padding * 2
+      const drawHeight = height - padding * 2
+      const lngSpan = Math.max(data.bounds.east - data.bounds.west, 0.001)
+      const latSpan = Math.max(data.bounds.north - data.bounds.south, 0.001)
+      const scale = Math.min(drawWidth / lngSpan, drawHeight / latSpan)
+      const project = (lng, lat) => [
+        padding + (lng - data.bounds.west) * scale + (drawWidth - lngSpan * scale) / 2,
+        height - padding - (lat - data.bounds.south) * scale - (drawHeight - latSpan * scale) / 2,
+      ]
+      context.fillStyle = '#e8e1d4'
+      context.fillRect(0, 0, width, height)
+      context.fillStyle = '#17343a'
+      context.font = 'bold 22px sans-serif'
+      context.fillText(`${data.label} 小区价格密度图`, padding, 34)
+      context.font = '12px sans-serif'
+      context.fillStyle = '#617074'
+      context.fillText(`小区 ${data.total} · 有价 ${data.priced}`, padding, 54)
+      context.strokeStyle = 'rgba(111, 82, 67, 0.52)'
+      context.lineWidth = 1
+      const drawRing = (points) => {
+        if (!points || points.length < 3) return
+        context.beginPath()
+        points.forEach(([lng, lat], index) => {
+          const [x, y] = project(lng, lat)
+          if (index === 0) context.moveTo(x, y)
+          else context.lineTo(x, y)
+        })
+        context.closePath()
+        context.stroke()
+      }
+      const collectRings = (coordinates) => {
+        if (!Array.isArray(coordinates) || !coordinates.length) return
+        if (typeof coordinates[0]?.[0] === 'number') {
+          drawRing(coordinates)
+          return
+        }
+        coordinates.forEach(collectRings)
+      }
+      ;(data.boundaries || []).forEach((feature) => collectRings(feature.geometry?.coordinates))
+      ;(data.points || []).forEach((point) => {
+        const [x, y] = project(point.lng, point.lat)
+        context.beginPath()
+        context.fillStyle = heatmapColor(point.price)
+        context.arc(x, y, point.price ? 3.5 : 2.5, 0, Math.PI * 2)
+        context.fill()
+      })
+      context.fillStyle = 'rgba(250, 246, 237, 0.92)'
+      context.fillRect(padding, height - 30, width - padding * 2, 22)
+      context.fillStyle = '#617074'
+      context.font = '10px sans-serif'
+      context.fillText('颜色：小区挂牌均价；每个圆点代表一个小区；仅供研究参考', padding + 6, height - 14)
+      wx.canvasToTempFilePath({
+        canvas,
+        success: (response) => {
+          wx.saveImageToPhotosAlbum({
+            filePath: response.tempFilePath,
+            success: () => wx.showToast({ title: '已保存到相册', icon: 'success' }),
+            fail: () => wx.showToast({ title: '保存失败，请在设置中开启相册权限', icon: 'none' }),
+            complete: () => this.setData({ exportingHeatmap: false }),
+          })
+        },
+        fail: () => {
+          this.showError(new Error('导出图片失败'))
+          this.setData({ exportingHeatmap: false })
+        },
+      })
+    })
+  },
+
   handleMarkerTap(event) {
     const marker = this.data.markers.find((item) => item.id === event.detail.markerId)
     if (!marker) return
@@ -425,11 +572,16 @@ Page({
           district: '',
           street: '',
           priceText: priceText(marker.item.avgPrice),
+          refPriceText: '',
+          refGapText: '',
+          historyRows: [],
+          historyTrendText: '',
+          historyTruncated: false,
         },
       })
       return
     }
-    this.setData({ selected: { ...marker.item, priceText: priceText(marker.item.price) } })
+    this.setData({ selected: { ...marker.item, priceText: priceText(marker.item.price), refPriceText: '', refGapText: '', historyRows: [], historyTrendText: '', historyTruncated: false } })
   },
 
   handleMapTap(event) {
@@ -445,6 +597,11 @@ Page({
             priceText: '',
             nearbySchoolsText: '',
             zoneText: (zone.zone.zones || []).join('、'),
+            refPriceText: '',
+            refGapText: '',
+            historyRows: [],
+            historyTrendText: '',
+            historyTruncated: false,
           },
           selectedLoading: false,
         })
@@ -473,7 +630,7 @@ Page({
     })
     if (!nearest || nearestDistance > threshold) return
     if (nearest.kind === 'school') {
-      this.setData({ selected: { ...schoolDetailText(nearest.item), type: 'school', priceText: '' }, selectedLoading: false })
+      this.setData({ selected: { ...schoolDetailText(nearest.item), type: 'school', priceText: '', refPriceText: '', refGapText: '', historyRows: [], historyTrendText: '', historyTruncated: false }, selectedLoading: false })
       return
     }
     const item = nearest.item
@@ -489,6 +646,11 @@ Page({
           district: '',
           street: '',
           priceText: priceText(item.avgPrice),
+          refPriceText: '',
+          refGapText: '',
+          historyRows: [],
+          historyTrendText: '',
+          historyTruncated: false,
         },
       })
       return
@@ -516,7 +678,13 @@ Page({
 
   reloadRegion(region, scale) {
     const zoom = Math.max(6, Math.min(18, Number(scale || this.data.scale)))
-    this.setData({ latitude: region.centerLatitude, longitude: region.centerLongitude, scale: zoom })
+    const centerLatitude = typeof region.centerLatitude === 'number'
+      ? region.centerLatitude
+      : (region.southwest.latitude + region.northeast.latitude) / 2
+    const centerLongitude = typeof region.centerLongitude === 'number'
+      ? region.centerLongitude
+      : (region.southwest.longitude + region.northeast.longitude) / 2
+    this.setData({ latitude: centerLatitude, longitude: centerLongitude, scale: zoom })
     this.loadMap({
       west: region.southwest.longitude,
       south: region.southwest.latitude,
@@ -525,8 +693,26 @@ Page({
     }, zoom)
   },
 
+  filterResults(results, keyword) {
+    const query = String(keyword || '').trim().toLowerCase()
+    if (!query) return results
+    return results.filter((item) => (
+      item.name.toLowerCase().includes(query)
+      || item.district.toLowerCase().includes(query)
+      || item.street.toLowerCase().includes(query)
+    ))
+  },
+
+  onResultFilterInput(event) {
+    const value = event.detail.value || ''
+    this.setData({
+      resultFilter: value,
+      resultFiltered: this.filterResults(this.data.results, value),
+    })
+  },
+
   handleResultTap(event) {
-    const item = this.data.results[event.currentTarget.dataset.index]
+    const item = this.data.resultFiltered[event.currentTarget.dataset.index]
     if (!item) return
     const delta = 0.008
     this.setData({
@@ -541,6 +727,48 @@ Page({
       east: item.lng + delta,
       north: item.lat + delta,
     }, 15)
+  },
+
+  exportRankingCsv() {
+    if (this.data.exportingCsv) return
+    const query = buildQuery({
+      q: this.data.keyword,
+      district: this.data.district,
+      street: this.data.street,
+      minPrice: this.data.minWan * 10000,
+      maxPrice: this.data.maxWan * 10000,
+      pricedOnly: this.data.pricedOnly ? 1 : 0,
+      minSamples: 3,
+      limit: 5000,
+    })
+    const url = `${apiBase}/api/export/rent-yield.csv?${query}`
+    this.setData({ exportingCsv: true })
+    wx.showLoading({ title: '正在导出' })
+    wx.downloadFile({
+      url,
+      success: (response) => {
+        if (response.statusCode !== 200) {
+          const message = response.statusCode === 404 ? '导出接口暂不可用，请先更新线上版本' : `导出失败 (${response.statusCode})`
+          this.showError(new Error(message))
+          return
+        }
+        wx.openDocument({
+          filePath: response.tempFilePath,
+          fileType: 'csv',
+          showMenu: true,
+          fail: () => {
+            wx.showToast({ title: '已下载文件，请在文件管理中打开', icon: 'none' })
+          },
+        })
+      },
+      fail: () => {
+        this.showError(new Error('导出失败，请检查网络与合法域名配置'))
+      },
+      complete: () => {
+        wx.hideLoading()
+        this.setData({ exportingCsv: false })
+      },
+    })
   },
 
   handleRankingTap(event) {
@@ -560,11 +788,30 @@ Page({
   async selectEstate(id) {
     this.setData({ selectedLoading: true })
     try {
-      const detail = await request(`/api/estates/${id}`)
+      const [detail, history] = await Promise.all([
+        request(`/api/estates/${id}`),
+        request(`/api/estates/${id}/price-history?limit=100`),
+      ])
       const bestSchool = detail.bestSchool
       const degreeTimeText = bestSchool
         ? `${bestSchool.name}：建议提前持有${bestSchool.holdYearsAdvised || 0}年（学位锁定${bestSchool.lockYears || (bestSchool.level === 'primary' ? 6 : 3)}年）`
         : ''
+      const historyRows = (history.history || []).map((row, index) => ({
+        key: `${row.capturedAt || ''}-${index}`,
+        dateText: (row.capturedAt || '').slice(0, 10),
+        priceText: `${(row.price / 10000).toFixed(2)}万`,
+      }))
+      let historyTrendText = ''
+      if (historyRows.length >= 2) {
+        const first = history.history[0].price
+        const last = history.history[history.history.length - 1].price
+        const change = last - first
+        const percent = first ? ((last - first) / first) * 100 : null
+        historyTrendText = `${change >= 0 ? '+' : ''}${Math.round(change)} 元/㎡${percent !== null ? `（${percent.toFixed(1)}%）` : ''}`
+      }
+      const refGap = detail.refPrice && detail.price
+        ? { diff: detail.price - detail.refPrice, percent: ((detail.price - detail.refPrice) / detail.refPrice) * 100 }
+        : null
       this.setData({
         selected: {
           ...detail,
@@ -572,9 +819,14 @@ Page({
           priceText: priceText(detail.price),
           rentText: rentText(detail.rentPrice),
           rentYieldText: rentYieldText(detail.rentYield),
+          refPriceText: detail.refPrice ? `${(detail.refPrice / 10000).toFixed(2)} 万元/㎡` : '',
+          refGapText: refGap ? `挂牌${refGap.diff > 0 ? '高于' : '低于'}参考价 ${Math.abs(refGap.percent).toFixed(1)}%` : '',
           degreeTimeText,
           degreePolicyNote: bestSchool?.degreePolicyNote || '',
           nearbySchoolsText: (detail.nearbySchools || []).map((school) => `${school.name} · ${school.distanceMeters}m`).join('；'),
+          historyRows,
+          historyTrendText,
+          historyTruncated: Boolean(history.truncated),
         },
         selectedLoading: false,
       })
@@ -601,7 +853,7 @@ Page({
   handleSchoolTap(event) {
     const index = event.currentTarget.dataset.index
     const school = this.data.schoolCircles?.[index]?.school
-    if (school) this.setData({ selected: { ...schoolDetailText(school), type: 'school', priceText: '' } })
+    if (school) this.setData({ selected: { ...schoolDetailText(school), type: 'school', priceText: '', refPriceText: '', refGapText: '', historyRows: [], historyTrendText: '', historyTruncated: false } })
   },
 
   clearSelected() {
