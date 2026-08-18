@@ -21,6 +21,7 @@ import type {
 } from './types'
 
 type MobileSheet = 'filters' | 'results' | 'detail' | null
+type RightPanelTab = 'results' | 'ranking' | 'detail'
 
 const SORT_VALUES = new Set<EstateSort>(['price-desc', 'price-asc', 'rent-yield'])
 const DEFAULT_MIN_WAN = 2
@@ -91,6 +92,7 @@ const showSchoolZones = ref(urlState.showSchoolZones)
 const sourcePanelOpen = ref(false)
 const showFiltersPanel = ref(true)
 const showResultsPanel = ref(true)
+const rightPanelTab = ref<RightPanelTab>('results')
 const heatmapLoading = ref(false)
 const mobileSheet = ref<MobileSheet>(null)
 const errorMessage = ref('')
@@ -105,6 +107,12 @@ const averagePrice = computed(() => {
   const value = snapshot.value?.stats.averagePrice
   return value ? `${(value / 10000).toFixed(1)}万` : '-'
 })
+const observedAtLabel = computed(() => formatTimestamp(snapshot.value?.sourceObservedAt || meta.value?.sourceObservedAt))
+const workspaceClasses = computed(() => ({
+  'filters-hidden': !showFiltersPanel.value,
+  'results-hidden': !showResultsPanel.value,
+  'both-panels-hidden': !showFiltersPanel.value && !showResultsPanel.value,
+}))
 const mapLimitNotice = computed(() => {
   if (!snapshot.value?.truncated) return ''
   return snapshot.value.mode === 'clusters'
@@ -114,12 +122,27 @@ const mapLimitNotice = computed(() => {
 const estateScope = computed(() => (
   meta.value?.catalog.scopes.find((scope) => scope.id === 'estates') ?? null
 ))
+const mapSourceLabel = computed(() => estateScope.value?.source?.name || '公开挂牌数据')
 const schoolScope = computed(() => (
   meta.value?.catalog.scopes.find((scope) => scope.id === 'school-scopes') ?? null
 ))
 
 function handleSnapshot(value: MapResponse) {
   snapshot.value = value
+}
+
+function formatTimestamp(value: string | null | undefined) {
+  if (!value) return '未知'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date).replaceAll('/', '-')
 }
 
 function handleViewChange(view: { center: [number, number]; zoom: number }) {
@@ -171,7 +194,8 @@ async function handleMapSelect(value: EstateDetail) {
   selectedEstate.value = value
   selectedSchool.value = null
   priceHistory.value = null
-  if (window.matchMedia('(max-width: 760px)').matches) mobileSheet.value = 'detail'
+  rightPanelTab.value = 'detail'
+  if (window.matchMedia('(max-width: 900px)').matches) mobileSheet.value = 'detail'
   await loadPriceHistory(value.id)
 }
 
@@ -187,11 +211,22 @@ function handleSchoolSelect(value: SchoolFeature) {
   priceHistory.value = null
   selectedEstate.value = null
   selectedSchool.value = value
-  if (window.matchMedia('(max-width: 760px)').matches) mobileSheet.value = 'detail'
+  rightPanelTab.value = 'detail'
+  if (window.matchMedia('(max-width: 900px)').matches) mobileSheet.value = 'detail'
 }
 
 function selectResult(value: EstateSummary) {
+  rightPanelTab.value = 'detail'
   mapView.value?.focusEstate(value)
+}
+
+async function copyCurrentLink() {
+  try {
+    await navigator.clipboard.writeText(window.location.href)
+    showError('当前地图链接已复制')
+  } catch {
+    showError('复制失败，请从浏览器地址栏复制当前链接')
+  }
 }
 
 function loadMoreResults() {
@@ -382,115 +417,149 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="app-shell">
-    <MapView
-      ref="mapView"
-      :filters="filters"
-      :show-boundaries="showBoundaries"
-      :show-schools="showSchools"
-      :show-school-zones="showSchoolZones"
-      :initial-view="urlState.view"
-      @snapshot="handleSnapshot"
-      @select="handleMapSelect"
-      @select-school="handleSchoolSelect"
-      @viewchange="handleViewChange"
-      @loading="loading = $event"
-      @loading-more="loadingMore = $event"
-      @detail-loading="detailLoading = $event"
-      @error="showError"
-    />
+    <header class="app-header">
+      <section class="brand-card">
+        <div class="brand-kicker">SHENZHEN · HOUSING ATLAS</div>
+        <div class="brand-line">
+          <h1>深圳住区观察</h1>
+          <span class="live-dot">API</span>
+        </div>
+        <p>展示挂牌均价，不是成交价，仅供城市研究参考。</p>
+      </section>
 
-    <header class="brand-card">
-      <div class="brand-kicker">SHENZHEN · HOUSING ATLAS</div>
-      <div class="brand-line">
-        <h1>深圳住区观察</h1>
-        <span class="live-dot">API</span>
-      </div>
-      <p>展示挂牌均价，不是成交价，仅供城市研究参考。</p>
-      <button class="source-button" type="button" @click="sourcePanelOpen = true">数据来源与方法</button>
+      <section class="stats-strip" aria-label="全市与当前范围统计">
+        <div><small>小区</small><strong>{{ meta?.totals.estates ?? '-' }}</strong></div>
+        <div><small>有价</small><strong>{{ meta?.totals.priced ?? '-' }}</strong></div>
+        <div><small>当前均价</small><strong>{{ averagePrice }}</strong></div>
+        <div class="desktop-stat"><small>来源观测</small><strong>{{ observedAtLabel }}</strong></div>
+      </section>
+
+      <nav class="header-actions" aria-label="页面工具">
+        <button type="button" aria-label="打开数据说明" @click="sourcePanelOpen = true"><span>?</span> 数据说明</button>
+        <button type="button" aria-label="复制当前地图链接" @click="void copyCurrentLink()"><span>↗</span> 复制链接</button>
+      </nav>
     </header>
 
-    <section class="stats-strip" aria-label="当前范围统计">
-      <div><small>小区</small><strong>{{ snapshot?.stats.total ?? '-' }}</strong></div>
-      <div><small>有价</small><strong>{{ snapshot?.stats.priced ?? '-' }}</strong></div>
-      <div><small>均价</small><strong>{{ averagePrice }}</strong></div>
-      <div class="desktop-stat"><small>来源观测</small><strong>{{ snapshot?.sourceObservedAt || meta?.sourceObservedAt || '未知' }}</strong></div>
+    <section class="workspace" :class="workspaceClasses">
+      <aside v-if="showFiltersPanel" class="desktop-panel filters-panel">
+        <div class="panel-title">
+          <div class="panel-title-copy"><span>筛选器</span><small>FILTER</small></div>
+          <button type="button" class="panel-close" aria-label="收起筛选器" @click="showFiltersPanel = false">‹</button>
+        </div>
+        <FiltersPanel v-model="filters" :meta="meta" />
+        <section class="panel-tools" aria-label="地图图层">
+          <div class="section-heading"><span>地图图层</span><strong>LAYER</strong></div>
+          <label class="boundary-toggle">
+            <input v-model="showBoundaries" type="checkbox">
+            <span>显示街道边界</span>
+          </label>
+          <label class="boundary-toggle layer-toggle">
+            <input v-model="showSchools" type="checkbox">
+            <span>显示学校（光明·南山）</span>
+          </label>
+          <label class="boundary-toggle layer-toggle">
+            <input v-model="showSchoolZones" type="checkbox">
+            <span>显示学区范围（近似）</span>
+          </label>
+        </section>
+        <section class="panel-exports" aria-label="导出工具">
+          <button class="heatmap-export-button" type="button" :disabled="heatmapLoading" @click="void exportHeatmap()">
+            {{ heatmapLoading ? '正在生成…' : '导出当前区域热力图' }}
+          </button>
+          <button class="heatmap-export-button" type="button" @click="exportDistrictRankingCsv()">
+            导出租售比+最佳学校 CSV
+          </button>
+        </section>
+      </aside>
+
+      <section class="map-stage" aria-label="深圳小区价格地图工作区">
+        <MapView
+          ref="mapView"
+          :filters="filters"
+          :show-boundaries="showBoundaries"
+          :show-schools="showSchools"
+          :show-school-zones="showSchoolZones"
+          :initial-view="urlState.view"
+          @snapshot="handleSnapshot"
+          @select="handleMapSelect"
+          @select-school="handleSchoolSelect"
+          @viewchange="handleViewChange"
+          @loading="loading = $event"
+          @loading-more="loadingMore = $event"
+          @detail-loading="detailLoading = $event"
+          @error="showError"
+        />
+
+        <div class="map-count-pill">共 <strong>{{ snapshot?.stats.total ?? 0 }}</strong> 个小区</div>
+        <div class="panel-reopen-controls">
+          <button v-if="!showFiltersPanel" class="reopen-left" type="button" @click="showFiltersPanel = true">筛选器 ›</button>
+          <button v-if="!showResultsPanel" class="reopen-right" type="button" @click="showResultsPanel = true">‹ 范围结果</button>
+        </div>
+        <div v-if="mapLimitNotice" class="map-limit-notice" role="status">{{ mapLimitNotice }}</div>
+
+        <div class="legend-card">
+          <span><i style="--color:#315b6d"></i>3.5万以下</span>
+          <span><i style="--color:#2d817c"></i>3.5-5万</span>
+          <span><i style="--color:#79a86b"></i>5-7万</span>
+          <span><i style="--color:#e3b657"></i>7-9万</span>
+          <span><i style="--color:#df7b45"></i>9-12万</span>
+          <span><i style="--color:#bb3e45"></i>12万以上</span>
+          <span class="legend-school"><i class="school-marker school-marker--primary"></i>小学</span>
+          <span class="legend-school"><i class="school-marker school-marker--junior"></i>初中</span>
+          <span class="legend-school"><i style="--color:#6d3fc9;border-radius:2px"></i>学区范围（近似）</span>
+        </div>
+
+      </section>
+
+      <aside v-if="showResultsPanel" class="desktop-panel insight-panel">
+        <div class="panel-title">
+          <div class="panel-title-copy">
+            <span>范围结果</span>
+            <strong class="panel-total">{{ snapshot?.results.length ?? 0 }} / {{ snapshot?.stats.total ?? 0 }}</strong>
+          </div>
+          <button type="button" class="panel-close" aria-label="收起范围结果" @click="showResultsPanel = false">›</button>
+        </div>
+        <nav class="panel-tabs" aria-label="右侧面板">
+          <button type="button" :class="{ active: rightPanelTab === 'results' }" @click="rightPanelTab = 'results'">结果</button>
+          <button type="button" :class="{ active: rightPanelTab === 'ranking' }" @click="rightPanelTab = 'ranking'">排行</button>
+          <button type="button" :class="{ active: rightPanelTab === 'detail' }" @click="rightPanelTab = 'detail'">详情</button>
+        </nav>
+        <ResultsPanel
+          v-if="rightPanelTab === 'results'"
+          :results="snapshot?.results ?? []"
+          :total="snapshot?.stats.total ?? 0"
+          :loading="loading"
+          :has-more="snapshot?.pagination.hasMore ?? false"
+          :loading-more="loadingMore"
+          v-model:sort="filters.sort"
+          @select="selectResult"
+          @load-more="loadMoreResults"
+        />
+        <RankingPanel
+          v-else-if="rightPanelTab === 'ranking'"
+          :items="ranking?.items ?? []"
+          :total="ranking?.stats.total ?? 0"
+          :loading="rankingLoading"
+          :has-more="ranking?.pagination.hasMore ?? false"
+          :loading-more="rankingLoadingMore"
+          :sort="rankingSort"
+          @select="selectResult"
+          @load-more="loadMoreRanking"
+          @change-sort="changeRankingSort"
+        />
+        <template v-else>
+          <SchoolDetailPanel v-if="selectedSchool" :school="selectedSchool" :scope="schoolScope" />
+          <DetailPanel v-else :estate="selectedEstate" :loading="detailLoading" :history="priceHistory" :history-loading="historyLoading" :history-days="historyDays" :scope="estateScope" @update:history-days="handleHistoryDaysChange" />
+        </template>
+      </aside>
     </section>
-    <div v-if="mapLimitNotice" class="map-limit-notice" role="status">{{ mapLimitNotice }}</div>
 
-    <div class="panel-reopen-controls">
-      <button v-if="!showFiltersPanel" type="button" @click="showFiltersPanel = true">显示筛选器</button>
-      <button v-if="!showResultsPanel" type="button" @click="showResultsPanel = true">显示范围结果</button>
-    </div>
-
-    <aside v-if="showFiltersPanel" class="desktop-panel filters-panel">
-      <div class="panel-title">
-        <div class="panel-title-copy"><span>筛选器</span><small>FILTER</small></div>
-        <button type="button" class="panel-close" aria-label="关闭筛选器" @click="showFiltersPanel = false">×</button>
-      </div>
-      <FiltersPanel v-model="filters" :meta="meta" />
-      <button class="heatmap-export-button" type="button" :disabled="heatmapLoading" @click="void exportHeatmap()">
-        {{ heatmapLoading ? '正在生成…' : '导出当前区域热力图' }}
-      </button>
-      <button class="heatmap-export-button" type="button" @click="exportDistrictRankingCsv()">
-        导出租售比+最佳学校 CSV
-      </button>
-      <label class="boundary-toggle">
-        <input v-model="showBoundaries" type="checkbox">
-        <span>显示街道边界</span>
-      </label>
-      <label class="boundary-toggle layer-toggle">
-        <input v-model="showSchools" type="checkbox">
-        <span>显示学校（光明·南山）</span>
-      </label>
-      <label class="boundary-toggle layer-toggle">
-        <input v-model="showSchoolZones" type="checkbox">
-        <span>显示学区范围（近似）</span>
-      </label>
-    </aside>
-
-    <aside v-if="showResultsPanel" class="desktop-panel insight-panel">
-      <div class="panel-title">
-        <div class="panel-title-copy"><span>范围结果</span><small>RESULTS</small></div>
-        <button type="button" class="panel-close" aria-label="关闭范围结果" @click="showResultsPanel = false">×</button>
-      </div>
-      <ResultsPanel
-        :results="snapshot?.results ?? []"
-        :total="snapshot?.stats.total ?? 0"
-        :loading="loading"
-        :has-more="snapshot?.pagination.hasMore ?? false"
-        :loading-more="loadingMore"
-        v-model:sort="filters.sort"
-        @select="selectResult"
-        @load-more="loadMoreResults"
-      />
-      <div class="detail-divider"></div>
-      <RankingPanel
-        :items="ranking?.items ?? []"
-        :total="ranking?.stats.total ?? 0"
-        :loading="rankingLoading"
-        :has-more="ranking?.pagination.hasMore ?? false"
-        :loading-more="rankingLoadingMore"
-        :sort="rankingSort"
-        @select="selectResult"
-        @load-more="loadMoreRanking"
-        @change-sort="changeRankingSort"
-      />
-      <div class="detail-divider"></div>
-      <SchoolDetailPanel v-if="selectedSchool" :school="selectedSchool" :scope="schoolScope" />
-      <DetailPanel v-else :estate="selectedEstate" :loading="detailLoading" :history="priceHistory" :history-loading="historyLoading" :history-days="historyDays" :scope="estateScope" @update:history-days="handleHistoryDaysChange" />
-    </aside>
-
-    <div class="legend-card">
-      <span><i style="--color:#315b6d"></i>3.5万以下</span>
-      <span><i style="--color:#2d817c"></i>3.5-5万</span>
-      <span><i style="--color:#79a86b"></i>5-7万</span>
-      <span><i style="--color:#e3b657"></i>7-9万</span>
-      <span><i style="--color:#df7b45"></i>9-12万</span>
-      <span><i style="--color:#bb3e45"></i>12万以上</span>
-      <span class="legend-school"><i class="school-marker school-marker--primary"></i>小学</span>
-      <span class="legend-school"><i class="school-marker school-marker--junior"></i>初中</span>
-      <span class="legend-school"><i style="--color:#6d3fc9;border-radius:2px"></i>学区范围（近似）</span>
-    </div>
+    <footer class="app-footer">
+      <span>单位：万元/㎡</span>
+      <span>数据来源：{{ mapSourceLabel }}</span>
+      <span>更新时间：{{ observedAtLabel }}</span>
+      <span>© OpenStreetMap contributors</span>
+    </footer>
 
     <div v-if="errorMessage" class="error-toast" role="alert">{{ errorMessage }}</div>
 

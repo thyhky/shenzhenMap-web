@@ -118,6 +118,11 @@ function drawPoints(items: MapItem[]) {
         `均价 ${priceText(item.avgPrice)}`,
         '继续放大查看具体小区',
       ]))
+      marker.bindTooltip(String(item.count), {
+        permanent: true,
+        direction: 'center',
+        className: 'cluster-count',
+      })
       marker.on('click', () => map?.setView([item.lat, item.lng], Math.min(16, map.getZoom() + 2)))
       marker.addTo(targetLayer)
       return

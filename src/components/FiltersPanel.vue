@@ -18,6 +18,17 @@ const streets = computed(() => {
     : all
 })
 
+const selectedConditions = computed(() => {
+  const items: Array<{ key: 'price' | 'district' | 'street' | 'keyword'; label: string }> = []
+  if (props.modelValue.minWan !== 2 || props.modelValue.maxWan !== 32) {
+    items.push({ key: 'price', label: `单价 ${props.modelValue.minWan.toFixed(1)}-${props.modelValue.maxWan.toFixed(1)} 万/㎡` })
+  }
+  if (props.modelValue.district) items.push({ key: 'district', label: `行政区 ${props.modelValue.district}` })
+  if (props.modelValue.street) items.push({ key: 'street', label: `街道 ${props.modelValue.street}` })
+  if (props.modelValue.keyword.trim()) items.push({ key: 'keyword', label: `小区 ${props.modelValue.keyword.trim()}` })
+  return items
+})
+
 function streetLabel(item: { name: string; estates: number; avgPrice: number | null }) {
   const stats = item.estates > 0
     ? `（${item.estates} 个 · ${item.avgPrice ? `${(item.avgPrice / 10000).toFixed(1)}万/㎡` : '暂无均价'}）`
@@ -47,14 +58,30 @@ function reset() {
     maxWan: 32,
   })
 }
+
+function clearCondition(key: 'price' | 'district' | 'street' | 'keyword') {
+  if (key === 'price') update({ minWan: 2, maxWan: 32 })
+  if (key === 'district') update({ district: '', street: '' })
+  if (key === 'street') update({ street: '' })
+  if (key === 'keyword') update({ keyword: '' })
+}
 </script>
 
 <template>
   <section class="filter-content">
-    <div class="section-heading">
-      <span>查找范围</span>
+    <div class="selected-heading">
+      <strong>已选条件 <em>{{ selectedConditions.length }}</em></strong>
       <button class="text-button" type="button" @click="reset">清空</button>
     </div>
+    <div v-if="selectedConditions.length" class="filter-chips" aria-label="已选筛选条件">
+      <button
+        v-for="condition in selectedConditions"
+        :key="condition.key"
+        type="button"
+        @click="clearCondition(condition.key)"
+      >{{ condition.label }} <span>×</span></button>
+    </div>
+    <p v-else class="filter-empty">当前使用默认全市范围</p>
 
     <label class="field">
       <span>小区名称</span>
@@ -95,8 +122,29 @@ function reset() {
     </div>
 
     <div class="section-heading price-heading">
-      <span>单价范围</span>
-      <strong>{{ modelValue.minWan.toFixed(1) }} - {{ modelValue.maxWan.toFixed(1) }} 万/㎡</strong>
+      <strong>单价范围（万元/㎡）</strong>
+    </div>
+
+    <div class="price-input-row">
+      <input
+        type="number"
+        min="0"
+        max="50"
+        step="0.5"
+        aria-label="最低单价"
+        :value="modelValue.minWan"
+        @change="update({ minWan: Math.min(Math.max(0, Number(($event.target as HTMLInputElement).value)), modelValue.maxWan) })"
+      >
+      <span>—</span>
+      <input
+        type="number"
+        min="1"
+        max="50"
+        step="0.5"
+        aria-label="最高单价"
+        :value="modelValue.maxWan"
+        @change="update({ maxWan: Math.max(Math.min(50, Number(($event.target as HTMLInputElement).value)), modelValue.minWan) })"
+      >
     </div>
 
     <label class="range-field">
