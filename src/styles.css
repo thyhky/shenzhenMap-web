@@ -161,9 +161,13 @@ button { color: inherit; }
 .detail-grid a, .scope-card a { color: #315b6d; text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .detail-disclaimer { margin: 12px 0 0; border-left: 2px solid #c29a74; padding-left: 9px; color: #75695f; font-size: 10px; line-height: 1.6; }
 .price-history { margin: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 11px 0; }
-.history-heading { display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
+.history-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; }
 .history-heading span { color: #a74f36; font-family: Consolas, monospace; }
 .history-heading span.down { color: #315b6d; }
+.history-periods { display: inline-flex; gap: 2px; margin-left: auto; }
+.history-periods button { border: 1px solid var(--line); background: #fff; color: #758285; border-radius: 3px; padding: 2px 7px; font-size: 10px; line-height: 1.4; cursor: pointer; }
+.history-periods button:hover { border-color: #c29a74; color: #7a4b2e; }
+.history-periods button.active { background: #7a4b2e; border-color: #7a4b2e; color: #fff; }
 .price-history svg { display: block; width: 100%; height: 70px; margin-top: 8px; }
 .history-empty { padding: 16px 0 8px; color: #758285; font-size: 11px; text-align: center; }
 .price-history small { color: #758285; font-size: 9px; }

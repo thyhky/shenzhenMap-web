@@ -25,7 +25,9 @@ One-shot pipeline: sync data -> generate SQL parts -> migrate remote D1
 
   --sync-from=DIR   source webmap dir for sync-data (default: C:\\code\\Codex\\fetch_house_prices\\webmap)
   --skip-sync       use the existing ./data snapshot without re-syncing
-  --start=N         resume applying update parts from part N
+  --start=N         resume applying update parts from part N (reuses the
+                    existing generated parts, so the import timestamp stays
+                    consistent; parts are NOT regenerated)
   --skip-backup     do not export the remote D1 backup
   --skip-migrate    do not apply pending D1 migrations
   --skip-deploy     do not build/deploy the worker
@@ -64,12 +66,14 @@ if (!flag('--skip-sync')) {
     cwd: projectRoot,
   })
 }
-steps.push({
-  desc: 'Generate SQL update parts from data snapshot',
-  cmd: process.execPath,
-  args: [resolve(projectRoot, 'scripts', 'generate-update.mjs')],
-  cwd: projectRoot,
-})
+if (start === undefined) {
+  steps.push({
+    desc: 'Generate SQL update parts from data snapshot',
+    cmd: process.execPath,
+    args: [resolve(projectRoot, 'scripts', 'generate-update.mjs')],
+    cwd: projectRoot,
+  })
+}
 if (!flag('--skip-backup')) {
   steps.push({
     desc: 'Export remote D1 backup (keep newest 14)',
@@ -81,10 +85,10 @@ if (!flag('--skip-backup')) {
 if (!flag('--skip-migrate')) {
   steps.push({
     desc: 'Apply pending D1 migrations (remote)',
-    cmd: process.execPath,
-    args: [wrangler, 'd1', 'migrations', 'apply', 'DB', '--remote'],
+    cmd: wrangler,
+    args: ['d1', 'migrations', 'apply', 'DB', '--remote'],
     cwd: projectRoot,
-    donePatterns: [/Successfully created \d+ migration/, /No pending migrations/, /already applied/],
+    donePatterns: [/Successfully created \d+ migration/, /Executed \d+ commands/, /No migrations to apply!/, /already applied/],
     failPatterns: [/^X /, /fetch failed/i, /ERROR/i],
   })
 }
@@ -95,6 +99,12 @@ steps.push({
     resolve(projectRoot, 'scripts', 'execute-update-parts.mjs'),
     ...(start !== undefined ? [`--start=${start}`] : []),
   ],
+  cwd: projectRoot,
+})
+steps.push({
+  desc: 'Prune price history to 90 days',
+  cmd: process.execPath,
+  args: [resolve(projectRoot, 'scripts', 'prune-price-history.mjs')],
   cwd: projectRoot,
 })
 if (!flag('--skip-deploy')) {
@@ -118,8 +128,8 @@ if (!flag('--skip-deploy')) {
   })
   steps.push({
     desc: 'Deploy worker',
-    cmd: process.execPath,
-    args: [wrangler, 'deploy'],
+    cmd: wrangler,
+    args: ['deploy'],
     cwd: projectRoot,
     donePatterns: [/Deployment complete/, /No deployable assets/],
     failPatterns: [/^X /, /fetch failed/i, /ERROR/i],

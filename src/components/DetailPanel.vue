@@ -7,8 +7,17 @@ const props = defineProps<{
   loading: boolean
   history: PriceHistoryResponse | null
   historyLoading: boolean
+  historyDays: number
   scope: DataScopeMetadata | null
 }>()
+
+const emit = defineEmits<{ 'update:historyDays': [days: number] }>()
+
+const historyPeriods: Array<{ label: string; days: number }> = [
+  { label: '1周', days: 7 },
+  { label: '1月', days: 30 },
+  { label: '1季度', days: 90 },
+]
 
 function priceText(price: number | null) {
   return price ? `${(price / 10000).toFixed(2)} 万元/㎡` : '暂无有效价格'
@@ -102,6 +111,16 @@ const chartPoints = computed(() => {
       <section class="price-history" aria-label="价格历史">
         <div class="history-heading">
           <strong>价格记录</strong>
+          <span class="history-periods" role="group" aria-label="历史周期">
+            <button
+              v-for="period in historyPeriods"
+              :key="period.days"
+              type="button"
+              :class="{ active: historyDays === period.days }"
+              :aria-pressed="historyDays === period.days"
+              @click="emit('update:historyDays', period.days)"
+            >{{ period.label }}</button>
+          </span>
           <span v-if="trend" :class="{ down: trend.change < 0 }">
             {{ trend.change >= 0 ? '+' : '' }}{{ Math.round(trend.change) }} 元/㎡
             <template v-if="trend.percent !== null">（{{ trend.percent.toFixed(1) }}%）</template>

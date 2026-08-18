@@ -132,6 +132,12 @@ Page({
     showResults: true,
     showFilters: true,
     showMoreTools: false,
+    historyDays: 30,
+    historyPeriods: [
+      { label: '1周', days: 7 },
+      { label: '1月', days: 30 },
+      { label: '1季度', days: 90 },
+    ],
     latitude: 22.6508,
     longitude: 114.0745,
     scale: 11,
@@ -790,7 +796,7 @@ Page({
     try {
       const [detail, history] = await Promise.all([
         request(`/api/estates/${id}`),
-        request(`/api/estates/${id}/price-history?limit=100`),
+        request(`/api/estates/${id}/price-history?days=${this.data.historyDays}&limit=100`),
       ])
       const bestSchool = detail.bestSchool
       const degreeTimeText = bestSchool
@@ -834,6 +840,15 @@ Page({
       this.showError(error)
       this.setData({ selectedLoading: false })
     }
+  },
+
+  async handleHistoryPeriod(event) {
+    const days = Number(event.currentTarget.dataset.days)
+    if (!days || days === this.data.historyDays) return
+    const id = this.data.selected?.id
+    if (typeof id !== 'number') return
+    this.setData({ historyDays: days })
+    await this.selectEstate(id)
   },
 
   expandCluster() {

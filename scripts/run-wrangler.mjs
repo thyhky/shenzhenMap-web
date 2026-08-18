@@ -55,7 +55,11 @@ export function runWrangler(wrangler, wranglerArgs, {
       if (done) return
       done = true
       clearInterval(timer)
-      resolve()
+      if (code === 0) {
+        resolve()
+      } else {
+        reject(new Error(`wrangler ${wranglerArgs.join(' ')} exited with code ${code}`))
+      }
     })
     child.on('error', (error) => {
       if (done) return

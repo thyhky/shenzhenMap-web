@@ -105,9 +105,10 @@ export function getEstate(id: number, signal?: AbortSignal): Promise<EstateDetai
 export function getEstatePriceHistory(
   id: number,
   signal?: AbortSignal,
+  days = 30,
   limit = 100,
 ): Promise<PriceHistoryResponse> {
-  return requestJson(`/api/estates/${id}/price-history?limit=${limit}`, signal)
+  return requestJson(`/api/estates/${id}/price-history?days=${days}&limit=${limit}`, signal)
 }
 
 export function getRanking(

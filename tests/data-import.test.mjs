@@ -65,6 +65,7 @@ async function database() {
   db.exec(await readFile(resolve('migrations/0011_estate_rent.sql'), 'utf8'))
   db.exec(await readFile(resolve('migrations/0012_school_degree_policy.sql'), 'utf8'))
   db.exec(await readFile(resolve('migrations/0013_estates_listing_price_index.sql'), 'utf8'))
+  db.exec(await readFile(resolve('migrations/0014_daily_price_snapshots.sql'), 'utf8'))
   return db
 }
 
@@ -117,10 +118,10 @@ test('unchanged upserts preserve timestamps and price history', async () => {
   assert.equal(db.prepare('SELECT updated_at FROM estates WHERE id = 1').get().updated_at, '2026-08-13T00:00:00.000Z')
   assert.equal(db.prepare('SELECT imported_at FROM estates WHERE id = 1').get().imported_at, '2026-08-14T00:00:00.000Z')
   assert.equal(db.prepare('SELECT record_changed_at FROM estates WHERE id = 1').get().record_changed_at, '2026-08-13T00:00:00.000Z')
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM price_history').get().count, 1)
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM price_history').get().count, 2)
 })
 
-test('price changes append history exactly once', async () => {
+test('price changes append history exactly once per day', async () => {
   const db = await database()
   db.exec(estateInsert(estate, '2026-08-13T00:00:00.000Z'))
   const changedEstate = {
@@ -138,6 +139,17 @@ test('price changes append history exactly once', async () => {
     '2026-08-12T00:00:00.000Z',
   )
   db.exec(estateUpsert(changedEstate, '2026-08-15T00:00:00.000Z'))
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM price_history').get().count, 3)
+})
+
+test('daily snapshots are idempotent within the same import day', async () => {
+  const db = await database()
+  db.exec(estateInsert(estate, '2026-08-13T00:00:00.000Z'))
+  db.exec(estateUpsert(estate, '2026-08-14T00:00:00.000Z'))
+  db.exec(estateUpsert(estate, '2026-08-14T05:00:00.000Z'))
+  const rows = db.prepare('SELECT captured_at, price FROM price_history WHERE estate_id = 1 ORDER BY captured_at').all()
+  assert.deepEqual(rows.map((row) => row.price), [50000, 50000])
+  assert.ok(rows.every((row) => row.captured_at.slice(0, 10) !== '2026-08-13' || row.price === 50000))
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM price_history').get().count, 2)
 })
 
@@ -150,7 +162,7 @@ test('full refresh hides missing estates without deleting history', async () => 
   assert.equal(db.prepare('SELECT record_changed_at FROM estates WHERE id = 1').get().record_changed_at, '2026-08-14T00:00:00.000Z')
   db.exec(estateUpsert(estate, '2026-08-14T00:00:00.000Z'))
   assert.equal(db.prepare('SELECT is_listed FROM estates WHERE id = 1').get().is_listed, 1)
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM price_history').get().count, 1)
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM price_history').get().count, 2)
 })
 
 test('school upserts are idempotent and retain missing records', async () => {

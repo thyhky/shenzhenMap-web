@@ -80,6 +80,7 @@ const loadingMore = ref(false)
 const detailLoading = ref(false)
 const historyLoading = ref(false)
 const priceHistory = ref<PriceHistoryResponse | null>(null)
+const historyDays = ref(30)
 const rankingSort = ref<'price' | 'rentYield'>('rentYield')
 const ranking = ref<RankingResponse | null>(null)
 const rankingLoading = ref(false)
@@ -151,23 +152,33 @@ function syncUrl() {
   }, 400)
 }
 
-async function handleMapSelect(value: EstateDetail) {
-  selectedEstate.value = value
-  selectedSchool.value = null
-  priceHistory.value = null
+async function loadPriceHistory(id: number) {
   historyController?.abort()
   const controller = new AbortController()
   historyController = controller
   historyLoading.value = true
-  if (window.matchMedia('(max-width: 760px)').matches) mobileSheet.value = 'detail'
   try {
-    const response = await getEstatePriceHistory(value.id, controller.signal)
-    if (selectedEstate.value?.id === value.id) priceHistory.value = response
+    const response = await getEstatePriceHistory(id, controller.signal, historyDays.value)
+    if (selectedEstate.value?.id === id) priceHistory.value = response
   } catch (error) {
     if ((error as Error).name !== 'AbortError') showError((error as Error).message)
   } finally {
     if (historyController === controller) historyLoading.value = false
   }
+}
+
+async function handleMapSelect(value: EstateDetail) {
+  selectedEstate.value = value
+  selectedSchool.value = null
+  priceHistory.value = null
+  if (window.matchMedia('(max-width: 760px)').matches) mobileSheet.value = 'detail'
+  await loadPriceHistory(value.id)
+}
+
+function handleHistoryDaysChange(days: number) {
+  if (historyDays.value === days) return
+  historyDays.value = days
+  if (selectedEstate.value) void loadPriceHistory(selectedEstate.value.id)
 }
 
 function handleSchoolSelect(value: SchoolFeature) {
@@ -466,7 +477,7 @@ onBeforeUnmount(() => {
       />
       <div class="detail-divider"></div>
       <SchoolDetailPanel v-if="selectedSchool" :school="selectedSchool" :scope="schoolScope" />
-      <DetailPanel v-else :estate="selectedEstate" :loading="detailLoading" :history="priceHistory" :history-loading="historyLoading" :scope="estateScope" />
+      <DetailPanel v-else :estate="selectedEstate" :loading="detailLoading" :history="priceHistory" :history-loading="historyLoading" :history-days="historyDays" :scope="estateScope" @update:history-days="handleHistoryDaysChange" />
     </aside>
 
     <div class="legend-card">
@@ -517,7 +528,7 @@ onBeforeUnmount(() => {
         @load-more="loadMoreResults"
       />
       <SchoolDetailPanel v-else-if="selectedSchool" :school="selectedSchool" :scope="schoolScope" />
-      <DetailPanel v-else :estate="selectedEstate" :loading="detailLoading" :history="priceHistory" :history-loading="historyLoading" :scope="estateScope" />
+      <DetailPanel v-else :estate="selectedEstate" :loading="detailLoading" :history="priceHistory" :history-loading="historyLoading" :history-days="historyDays" :scope="estateScope" @update:history-days="handleHistoryDaysChange" />
     </section>
 
     <div v-if="sourcePanelOpen" class="methodology-scrim" @click.self="sourcePanelOpen = false">

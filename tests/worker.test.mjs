@@ -73,6 +73,7 @@ async function setup() {
     '0011_estate_rent.sql',
     '0012_school_degree_policy.sql',
     '0013_estates_listing_price_index.sql',
+    '0014_daily_price_snapshots.sql',
   ]) {
     database.exec(await readFile(resolve('migrations', name), 'utf8'))
   }
@@ -209,6 +210,26 @@ test('worker exposes price history and hides unlisted details', async () => {
   const hidden = await request('/api/estates/25')
   assert.equal(hidden.status, 404)
   assert.equal(hidden.headers.get('Cache-Control'), 'no-store')
+})
+
+test('price history supports day-range filtering', async () => {
+  const { database, request } = await setup()
+  const today = new Date().toISOString()
+  database.exec(`INSERT INTO price_history (estate_id, price, source, captured_at, source_observed_at)
+    VALUES (1, 34000, 'test', '${today}', '${today}')`)
+  database.exec(`INSERT INTO price_history (estate_id, price, source, captured_at, source_observed_at)
+    VALUES (1, 29000, 'test', '2019-06-01T00:00:00.000Z', '2019-06-01T00:00:00.000Z')`)
+  const week = await request('/api/estates/1/price-history?days=7&limit=50')
+  const weekBody = await week.json()
+  assert.equal(week.status, 200)
+  assert.ok(weekBody.history.length >= 1)
+  assert.ok(weekBody.history.every((row) => row.price !== 29000))
+  const all = await request('/api/estates/1/price-history?days=90&limit=50')
+  const allBody = await all.json()
+  assert.equal(all.headers.get('X-Worker-Cache'), 'MISS')
+  assert.ok(allBody.history.every((row) => row.price !== 29000))
+  const invalid = await request('/api/estates/1/price-history?days=0')
+  assert.equal(invalid.status, 400)
 })
 
 test('data version changes bypass existing edge cache entries', async () => {

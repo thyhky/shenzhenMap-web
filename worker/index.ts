@@ -923,12 +923,14 @@ async function handleRankingExport(url: URL, env: Env): Promise<Response> {
 }
 
 async function handlePriceHistory(id: number, url: URL, env: Env): Promise<Response> {
+  const days = integerParam(url.searchParams, 'days', 30, 1, 90)
   const limit = integerParam(url.searchParams, 'limit', 100, 1, 200)
   const [estateResult, historyResult] = await env.DB.batch([
     env.DB.prepare('SELECT id FROM estates WHERE id = ? AND is_listed = 1').bind(id),
     env.DB.prepare(`SELECT id, price, source, captured_at, source_observed_at
       FROM price_history WHERE estate_id = ?
-      ORDER BY captured_at DESC, id DESC LIMIT ?`).bind(id, limit + 1),
+        AND captured_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)
+      ORDER BY captured_at DESC, id DESC LIMIT ?`).bind(id, `-${days} days`, limit + 1),
   ])
   if (!estateResult.results.length) throw new HttpError(404, '未找到该小区')
   const rows = historyResult.results as unknown as PriceHistoryRow[]
@@ -1111,7 +1113,8 @@ function canonicalCachePath(url: URL): string | null {
     const id = Number(historyMatch[1])
     if (!Number.isSafeInteger(id) || id <= 0) throw new HttpError(400, '小区 ID 无效')
     const limit = integerParam(url.searchParams, 'limit', 100, 1, 200)
-    return `/api/estates/${id}/price-history?limit=${limit}`
+    const days = integerParam(url.searchParams, 'days', 30, 1, 90)
+    return `/api/estates/${id}/price-history?days=${days}&limit=${limit}`
   }
   const detailMatch = url.pathname.match(/^\/api\/estates\/(\d+)$/)
   if (detailMatch) {
