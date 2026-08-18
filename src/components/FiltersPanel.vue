@@ -18,6 +18,13 @@ const streets = computed(() => {
     : all
 })
 
+function streetLabel(item: { name: string; estates: number; avgPrice: number | null }) {
+  const stats = item.estates > 0
+    ? `（${item.estates} 个 · ${item.avgPrice ? `${(item.avgPrice / 10000).toFixed(1)}万/㎡` : '暂无均价'}）`
+    : ''
+  return `${item.name}${stats}`
+}
+
 function update(patch: Partial<EstateFilters>) {
   const next = { ...props.modelValue, ...patch }
   const nextStreets = (props.meta?.streets ?? []).filter(
@@ -81,7 +88,7 @@ function reset() {
         >
           <option value="">全部街道</option>
           <option v-for="item in streets" :key="`${item.district}-${item.name}`" :value="item.name">
-            {{ item.name }}
+            {{ streetLabel(item) }}
           </option>
         </select>
       </label>

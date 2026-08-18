@@ -418,8 +418,22 @@ onMounted(() => {
     pane: 'streetBoundaries',
     style: { color: '#a85843', weight: 1, opacity: 0.66, fillOpacity: 0.015 },
     onEachFeature: (feature, layer) => {
-      const properties = feature.properties as { name?: string; district?: string } | undefined
-      if (properties) layer.bindTooltip(`${properties.name ?? ''} · ${properties.district ?? ''}`, { sticky: true })
+      const properties = feature.properties as
+        | { name?: string; district?: string; estates?: number; priced?: number; avgPrice?: number | null }
+        | undefined
+      if (!properties) return
+      const lines = [`${properties.name ?? ''} · ${properties.district ?? ''}`]
+      if (properties.estates) {
+        lines.push(`${properties.estates} 个小区 · ${properties.priced ?? 0} 个有价`)
+        lines.push(`均价 ${properties.avgPrice ? priceText(properties.avgPrice) : '暂无'}`)
+        layer.bindTooltip(lines.join('<br>'), { sticky: true })
+        layer.on('click', () => {
+          const bounds = (layer as L.Polygon).getBounds()
+          map?.fitBounds(bounds, { padding: [40, 40] })
+        })
+      } else {
+        layer.bindTooltip(`${properties.name ?? ''} · ${properties.district ?? ''}`, { sticky: true })
+      }
     },
   }).addTo(map)
   schoolZoneLayer = L.geoJSON(undefined, {

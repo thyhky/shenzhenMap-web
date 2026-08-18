@@ -404,7 +404,11 @@ function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number):
 async function handleMeta(env: Env): Promise<Response> {
   const [districts, streets, totals, range, update, scopes, metadata] = await env.DB.batch([
     env.DB.prepare('SELECT DISTINCT district FROM estates WHERE is_listed = 1 AND district <> ? ORDER BY district').bind(''),
-    env.DB.prepare('SELECT DISTINCT street AS name, district FROM estates WHERE is_listed = 1 AND street <> ? ORDER BY district, street').bind(''),
+    env.DB.prepare(`SELECT street AS name, district,
+      COUNT(*) AS estates, SUM(has_price) AS priced,
+      ROUND(AVG(price)) AS avg_price
+      FROM estates WHERE is_listed = 1 AND street <> ''
+      GROUP BY street, district ORDER BY district, street`),
     env.DB.prepare('SELECT COUNT(*) AS estates, SUM(has_price) AS priced FROM estates WHERE is_listed = 1'),
     env.DB.prepare('SELECT MIN(price) AS min, MAX(price) AS max FROM estates WHERE is_listed = 1 AND has_price = 1'),
     env.DB.prepare(`SELECT MAX(source_observed_at) AS source_observed_at,
@@ -424,14 +428,20 @@ async function handleMeta(env: Env): Promise<Response> {
     record_changed_at?: string
   } | undefined
   const districtRows = districts.results as { district: string }[]
-  const streetRows = streets.results as { name: string; district: string }[]
+  const streetRows = streets.results as { name: string; district: string; estates?: number; priced?: number; avg_price?: number }[]
   const scopeRows = scopes.results as unknown as DataScopeRow[]
   const metadataRows = Object.fromEntries(
     (metadata.results as { key: string; value: string }[]).map((row) => [row.key, row.value]),
   )
   return json({
     districts: districtRows.map((row) => row.district),
-    streets: streetRows.map((row) => ({ name: row.name, district: row.district })),
+    streets: streetRows.map((row) => ({
+      name: row.name,
+      district: row.district,
+      estates: row.estates ?? 0,
+      priced: row.priced ?? 0,
+      avgPrice: row.avg_price ?? null,
+    })),
     totals: { estates: totalsRow?.estates ?? 0, priced: totalsRow?.priced ?? 0 },
     priceRange: { min: rangeRow?.min ?? 0, max: rangeRow?.max ?? 0 },
     sourceObservedAt: updateRow?.source_observed_at ?? null,
@@ -948,20 +958,36 @@ async function handlePriceHistory(id: number, url: URL, env: Env): Promise<Respo
 
 async function handleStreets(env: Env): Promise<Response> {
   const result = await env.DB.prepare(
-    `SELECT name, district, geometry FROM streets
-     WHERE is_current = 1
-     ORDER BY district, name LIMIT 100`,
+    `SELECT s.name, s.district, s.geometry,
+       COUNT(e.id) AS estates,
+       COALESCE(SUM(e.has_price), 0) AS priced,
+       ROUND(AVG(e.price)) AS avg_price
+     FROM streets s
+     LEFT JOIN estates e
+       ON e.street = s.name AND e.district = s.district AND e.is_listed = 1
+     WHERE s.is_current = 1
+     GROUP BY s.name, s.district
+     ORDER BY s.district, s.name LIMIT 100`,
   ).all<{
     name: string
     district: string
     geometry: string
+    estates: number
+    priced: number
+    avg_price: number | null
   }>()
   return json({
     type: 'FeatureCollection',
     scope: 'streets',
     features: result.results.map((row) => ({
       type: 'Feature',
-      properties: { name: row.name, district: row.district },
+      properties: {
+        name: row.name,
+        district: row.district,
+        estates: row.estates,
+        priced: row.priced,
+        avgPrice: row.avg_price,
+      },
       geometry: JSON.parse(row.geometry),
     })),
   }, { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=86400' } })

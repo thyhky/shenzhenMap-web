@@ -250,13 +250,25 @@ test('data version changes bypass existing edge cache entries', async () => {
   assert.equal(refreshed.headers.get('X-Data-Version'), 'v2')
 })
 
-test('layer catalog exposes streets and schools, and rejects planned layers', async () => {
+test('layer catalog exposes streets with stats and schools, and rejects planned layers', async () => {
   const { request } = await setup()
   const streets = await request('/api/layers/streets')
   const streetsBody = await streets.json()
   assert.equal(streets.status, 200)
   assert.equal(streetsBody.scope, 'streets')
   assert.equal(streetsBody.features.length, 1)
+  const streetStats = streetsBody.features[0].properties
+  assert.equal(streetStats.name, '测试街道')
+  assert.equal(streetStats.estates, 23)
+  assert.equal(streetStats.priced, 23)
+  assert.equal(streetStats.avgPrice, 30013)
+
+  const meta = await request('/api/meta')
+  const metaBody = await meta.json()
+  const testStreet = metaBody.streets.find((item) => item.name === '测试街道' && item.district === '测试区')
+  assert.equal(testStreet.estates, 23)
+  assert.equal(testStreet.priced, 23)
+  assert.equal(testStreet.avgPrice, 30013)
 
   const schools = await request('/api/layers/school-scopes')
   const schoolsBody = await schools.json()

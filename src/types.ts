@@ -13,6 +13,9 @@ export interface EstateFilters {
 export interface StreetOption {
   name: string
   district: string
+  estates: number
+  priced: number
+  avgPrice: number | null
 }
 
 export interface DataScopeMetadata {
@@ -201,6 +204,9 @@ export interface StreetFeatureCollection {
     properties: {
       name: string
       district: string
+      estates: number
+      priced: number
+      avgPrice: number | null
     }
     geometry: GeoJSON.Geometry
   }>
