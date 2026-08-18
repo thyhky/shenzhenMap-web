@@ -166,7 +166,7 @@ npm run deploy
 - `GET /api/heatmap`：按行政区或街道返回逐个小区的热力图点（不返回小区名称），参数需包含 `district`，可选 `street`、`pricedOnly`、`minPrice`、`maxPrice`
 - `GET /api/layers/{transit|planning}`：计划数据层，暂返回 404
 
-地图接口强制传入 `west`、`south`、`east`、`north`，单次最多返回 1000 个明细点；低缩放级别返回服务端聚合结果。`/api/estates` 和 `/api/search` 支持 `page`（1-1000）与 `pageSize`（1-50）分页，响应带 `pagination.hasMore`。
+地图接口强制传入 `west`、`south`、`east`、`north`，单次最多返回 1000 个明细点；低缩放级别返回服务端聚合结果。`/api/estates`、`/api/search`、`/api/ranking` 和导出接口支持 `missingRefPrice=1` 只返回无官方参考价的小区；`/api/estates` 和 `/api/search` 支持 `page`（1-1000）与 `pageSize`（1-50）分页，响应带 `pagination.hasMore`。
 
 公开地图的 API 不能视为私有数据接口：浏览器需要读取的数据，终端用户都可以通过开发者工具或网络请求查看。当前 API 返回 `X-Robots-Tag: noindex, nofollow, noarchive`，仅用于避免搜索引擎建立索引，不提供访问控制。若需要限制批量读取，应在 Cloudflare 配置 Rate Limiting/WAF；若需要真正私有化，应为站点启用 Cloudflare Access 或登录鉴权。
 

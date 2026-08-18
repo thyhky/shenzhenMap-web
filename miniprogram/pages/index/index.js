@@ -127,6 +127,7 @@ Page({
     minWan: 2,
     maxWan: 32,
     pricedOnly: true,
+    missingRefPrice: false,
     appliedFilters: {
       district: '',
       street: '',
@@ -134,6 +135,7 @@ Page({
       minWan: 2,
       maxWan: 32,
       pricedOnly: true,
+      missingRefPrice: false,
     },
     showSchools: false,
     showZones: false,
@@ -227,6 +229,7 @@ Page({
         minPrice: applied.minWan * 10000,
         maxPrice: applied.maxWan * 10000,
         pricedOnly: applied.pricedOnly ? 1 : 0,
+        missingRefPrice: applied.missingRefPrice ? 1 : 0,
         page: 1,
         pageSize: 20,
         district: applied.district,
@@ -301,6 +304,7 @@ Page({
         minPrice: applied.minWan * 10000,
         maxPrice: applied.maxWan * 10000,
         pricedOnly: applied.pricedOnly ? 1 : 0,
+        missingRefPrice: applied.missingRefPrice ? 1 : 0,
       })
       const rows = (ranking.items || []).map((item) => ({
         ...item,
@@ -339,6 +343,7 @@ Page({
         minPrice: applied.minWan * 10000,
         maxPrice: applied.maxWan * 10000,
         pricedOnly: applied.pricedOnly ? 1 : 0,
+        missingRefPrice: applied.missingRefPrice ? 1 : 0,
       })
       const seen = new Set(this.data.rankingItems.map((item) => item.id))
       const rows = (ranking.items || [])
@@ -442,6 +447,7 @@ Page({
         minWan: this.data.minWan,
         maxWan: this.data.maxWan,
         pricedOnly: this.data.pricedOnly,
+        missingRefPrice: this.data.missingRefPrice,
       },
     }, () => {
       this.loadMap()
@@ -464,6 +470,10 @@ Page({
 
   togglePricedOnly() {
     this.setData({ pricedOnly: !this.data.pricedOnly })
+  },
+
+  toggleMissingRefPrice() {
+    this.setData({ missingRefPrice: !this.data.missingRefPrice })
   },
 
   toggleSchools() {
@@ -517,6 +527,7 @@ Page({
       district: applied.district,
       street: applied.street,
       pricedOnly: applied.pricedOnly ? 1 : 0,
+      missingRefPrice: applied.missingRefPrice ? 1 : 0,
       minPrice: applied.minWan * 10000,
       maxPrice: applied.maxWan * 10000,
     }).then((data) => {
@@ -795,6 +806,7 @@ Page({
       minPrice: applied.minWan * 10000,
       maxPrice: applied.maxWan * 10000,
       pricedOnly: applied.pricedOnly ? 1 : 0,
+      missingRefPrice: applied.missingRefPrice ? 1 : 0,
       minSamples: 3,
       limit: 5000,
     })

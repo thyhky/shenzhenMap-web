@@ -338,6 +338,24 @@ test('search responses are cached under a canonical key', async () => {
   assert.equal(equivalent.headers.get('X-Worker-Cache'), 'HIT')
 })
 
+test('missing reference-price filtering is applied and cache-separated', async () => {
+  const { database, request } = await setup()
+  database.exec('UPDATE estates SET ref_price = 49100 WHERE id = 1')
+  const missing = await request('/api/search?q=%E6%B5%8B%E8%AF%95&minPrice=0&maxPrice=500000&missingRefPrice=1&pageSize=50')
+  const missingBody = await missing.json()
+  assert.equal(missing.status, 200)
+  assert.equal(missing.headers.get('X-Worker-Cache'), 'MISS')
+  assert.equal(missingBody.stats.total, 23)
+  assert.ok(missingBody.results.every((estate) => estate.refPrice === null))
+
+  const all = await request('/api/search?q=%E6%B5%8B%E8%AF%95&minPrice=0&maxPrice=500000&pageSize=50')
+  assert.equal(all.headers.get('X-Worker-Cache'), 'MISS')
+  assert.equal((await all.json()).stats.total, 24)
+
+  const equivalent = await request('/api/search?pageSize=50&missingRefPrice=1&maxPrice=500000&q=%E6%B5%8B%E8%AF%95&minPrice=0')
+  assert.equal(equivalent.headers.get('X-Worker-Cache'), 'HIT')
+})
+
 test('estates support sort orderings with distinct cache keys', async () => {
   const { request } = await setup()
   const base = '/api/estates?west=113.9&south=22.4&east=114.2&north=22.8&zoom=14&minPrice=0&maxPrice=500000&pageSize=5'

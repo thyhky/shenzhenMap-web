@@ -15,6 +15,7 @@ interface EstateFilters {
   street: string
   keyword: string
   pricedOnly: boolean
+  missingRefPrice: boolean
   minPrice: number
   maxPrice: number
 }
@@ -252,6 +253,7 @@ function parseEstateFilters(params: URLSearchParams): EstateFilters {
     street: (params.get('street') || '').slice(0, 30),
     keyword: parseKeyword(params),
     pricedOnly: params.get('pricedOnly') === '1',
+    missingRefPrice: params.get('missingRefPrice') === '1',
     minPrice,
     maxPrice,
   }
@@ -294,6 +296,7 @@ function buildWhere(filters: EstateFilters, bounds?: Bounds): { sql: string; val
     values.push(`%${filters.keyword.replace(/[\\%_]/g, '\\$&')}%`)
   }
   if (filters.pricedOnly) conditions.push('has_price = 1')
+  if (filters.missingRefPrice) conditions.push('ref_price IS NULL')
   conditions.push('((has_price = 0 AND ? = 0) OR (has_price = 1 AND price BETWEEN ? AND ?))')
   values.push(filters.pricedOnly ? 1 : 0)
   values.push(filters.minPrice, filters.maxPrice)
@@ -321,6 +324,7 @@ function buildEstateWhere(filters: EstateFilters, alias: string, bounds?: Bounds
     values.push(`%${filters.keyword.replace(/[\\%_]/g, '\\$&')}%`)
   }
   if (filters.pricedOnly) conditions.push(`${prefix}has_price = 1`)
+  if (filters.missingRefPrice) conditions.push(`${prefix}ref_price IS NULL`)
   conditions.push(`((${prefix}has_price = 0 AND ? = 0) OR (${prefix}has_price = 1 AND ${prefix}price BETWEEN ? AND ?))`)
   values.push(filters.pricedOnly ? 1 : 0)
   values.push(filters.minPrice, filters.maxPrice)
@@ -1076,6 +1080,7 @@ function canonicalCachePath(url: URL): string | null {
       district: filters.district,
       street: filters.street,
       pricedOnly: filters.pricedOnly ? '1' : '0',
+      missingRefPrice: filters.missingRefPrice ? '1' : '0',
       minPrice: String(filters.minPrice),
       maxPrice: String(filters.maxPrice),
     })
@@ -1090,6 +1095,7 @@ function canonicalCachePath(url: URL): string | null {
       district: filters.district,
       street: filters.street,
       pricedOnly: filters.pricedOnly ? '1' : '0',
+      missingRefPrice: filters.missingRefPrice ? '1' : '0',
       minPrice: String(filters.minPrice),
       maxPrice: String(filters.maxPrice),
       sort: parseSort(url.searchParams),
@@ -1111,6 +1117,7 @@ function canonicalCachePath(url: URL): string | null {
       street: filters.street,
       q: filters.keyword,
       pricedOnly: filters.pricedOnly ? '1' : '0',
+      missingRefPrice: filters.missingRefPrice ? '1' : '0',
       minPrice: String(filters.minPrice),
       maxPrice: String(filters.maxPrice),
       sort: parseSort(url.searchParams),
@@ -1126,6 +1133,7 @@ function canonicalCachePath(url: URL): string | null {
       street: url.searchParams.get('street') || '',
       q: url.searchParams.get('q') || '',
       pricedOnly: url.searchParams.get('pricedOnly') === '1' ? '1' : '0',
+      missingRefPrice: url.searchParams.get('missingRefPrice') === '1' ? '1' : '0',
       minPrice: url.searchParams.get('minPrice') || '',
       maxPrice: url.searchParams.get('maxPrice') || '',
       page: url.searchParams.get('page') || '1',

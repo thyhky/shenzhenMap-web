@@ -5,6 +5,7 @@ export interface EstateFilters {
   street: string
   keyword: string
   pricedOnly: boolean
+  missingRefPrice: boolean
   minWan: number
   maxWan: number
   sort: EstateSort

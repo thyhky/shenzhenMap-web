@@ -45,6 +45,7 @@ function mapParams(request: MapRequest, page: number): URLSearchParams {
   if (request.street) params.set('street', request.street)
   if (request.keyword.trim()) params.set('q', request.keyword.trim())
   if (request.pricedOnly) params.set('pricedOnly', '1')
+  if (request.missingRefPrice) params.set('missingRefPrice', '1')
   return params
 }
 
@@ -60,6 +61,7 @@ function filterParams(filters: EstateFilters, page: number): URLSearchParams {
   if (filters.district) params.set('district', filters.district)
   if (filters.street) params.set('street', filters.street)
   if (filters.pricedOnly) params.set('pricedOnly', '1')
+  if (filters.missingRefPrice) params.set('missingRefPrice', '1')
   return params
 }
 
@@ -92,6 +94,7 @@ export function getHeatmap(filters: EstateFilters, signal?: AbortSignal): Promis
     district: filters.district,
     street: filters.street,
     pricedOnly: filters.pricedOnly ? '1' : '0',
+    missingRefPrice: filters.missingRefPrice ? '1' : '0',
     minPrice: String(Math.round(filters.minWan * 10000)),
     maxPrice: String(Math.round(filters.maxWan * 10000)),
   })

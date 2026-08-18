@@ -20,13 +20,14 @@ const streets = computed(() => {
 })
 
 const selectedConditions = computed(() => {
-  const items: Array<{ key: 'price' | 'district' | 'street' | 'keyword'; label: string }> = []
+  const items: Array<{ key: 'price' | 'district' | 'street' | 'keyword' | 'missingRefPrice'; label: string }> = []
   if (props.modelValue.minWan !== 2 || props.modelValue.maxWan !== 32) {
     items.push({ key: 'price', label: `单价 ${props.modelValue.minWan.toFixed(1)}-${props.modelValue.maxWan.toFixed(1)} 万/㎡` })
   }
   if (props.modelValue.district) items.push({ key: 'district', label: `行政区 ${props.modelValue.district}` })
   if (props.modelValue.street) items.push({ key: 'street', label: `街道 ${props.modelValue.street}` })
   if (props.modelValue.keyword.trim()) items.push({ key: 'keyword', label: `小区 ${props.modelValue.keyword.trim()}` })
+  if (props.modelValue.missingRefPrice) items.push({ key: 'missingRefPrice', label: '无官方参考价' })
   return items
 })
 
@@ -55,16 +56,18 @@ function reset() {
     street: '',
     keyword: '',
     pricedOnly: true,
+    missingRefPrice: false,
     minWan: 2,
     maxWan: 32,
   })
 }
 
-function clearCondition(key: 'price' | 'district' | 'street' | 'keyword') {
+function clearCondition(key: 'price' | 'district' | 'street' | 'keyword' | 'missingRefPrice') {
   if (key === 'price') update({ minWan: 2, maxWan: 32 })
   if (key === 'district') update({ district: '', street: '' })
   if (key === 'street') update({ street: '' })
   if (key === 'keyword') update({ keyword: '' })
+  if (key === 'missingRefPrice') update({ missingRefPrice: false })
 }
 </script>
 
@@ -170,6 +173,15 @@ function clearCondition(key: 'price' | 'district' | 'street' | 'keyword') {
         :value="modelValue.maxWan"
         @input="update({ maxWan: Math.max(Number(($event.target as HTMLInputElement).value), modelValue.minWan) })"
       >
+    </label>
+
+    <label class="check-field ref-price-filter">
+      <input
+        type="checkbox"
+        :checked="modelValue.missingRefPrice"
+        @change="update({ missingRefPrice: ($event.target as HTMLInputElement).checked })"
+      >
+      <span>只看无官方参考价</span>
     </label>
 
     <button class="apply-filters-button" type="button" @click="emit('apply')">

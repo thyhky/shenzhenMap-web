@@ -53,6 +53,7 @@
             <input type="number" data-field="max" value="{{maxWan}}" bindinput="handlePriceInput" />
           </view>
           <label class="check-row"><checkbox checked="{{pricedOnly}}" bindtap="togglePricedOnly" />只显示有价小区</label>
+          <label class="check-row"><checkbox checked="{{missingRefPrice}}" bindtap="toggleMissingRefPrice" />只看无官方参考价</label>
           <view class="tool-row">
             <button size="mini" bindtap="toggleSchools">{{showSchools ? '隐藏学校' : '显示学校'}}</button>
             <button size="mini" bindtap="toggleZones">{{showZones ? '隐藏学区' : '显示学区'}}</button>

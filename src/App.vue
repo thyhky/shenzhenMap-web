@@ -37,7 +37,7 @@ function readNumber(value: string | null): number | null {
 function clampWan(value: string | null, fallback: number) {
   const parsed = readNumber(value)
   if (parsed === null) return fallback
-  return Math.min(32, Math.max(0, parsed))
+  return Math.min(50, Math.max(0, parsed))
 }
 
 function readUrlState(): {
@@ -58,6 +58,7 @@ function readUrlState(): {
       street: params.get('street') || '',
       keyword: params.get('q') || '',
       pricedOnly: params.get('pricedOnly') !== '0',
+      missingRefPrice: params.get('missingRefPrice') === '1',
       minWan: clampWan(params.get('minWan'), DEFAULT_MIN_WAN),
       maxWan: clampWan(params.get('maxWan'), DEFAULT_MAX_WAN),
       sort: SORT_VALUES.has(sortValue as EstateSort) ? sortValue as EstateSort : 'price-desc',
@@ -138,6 +139,20 @@ function applyFilterDraft() {
   if (window.matchMedia('(max-width: 900px)').matches) mobileSheet.value = null
 }
 
+function applyPriceBand(minWan: number, maxWan: number) {
+  const active = filters.value.minWan === minWan && filters.value.maxWan === maxWan
+  filterDraft.value = {
+    ...filterDraft.value,
+    minWan: active ? DEFAULT_MIN_WAN : minWan,
+    maxWan: active ? DEFAULT_MAX_WAN : maxWan,
+  }
+  applyFilterDraft()
+}
+
+function priceBandActive(minWan: number, maxWan: number) {
+  return filters.value.minWan === minWan && filters.value.maxWan === maxWan
+}
+
 function formatTimestamp(value: string | null | undefined) {
   if (!value) return '未知'
   const date = new Date(value)
@@ -166,8 +181,9 @@ function syncUrl() {
     if (current.street) params.set('street', current.street)
     if (current.keyword.trim()) params.set('q', current.keyword.trim())
     if (!current.pricedOnly) params.set('pricedOnly', '0')
-    if (current.minWan > 0) params.set('minWan', String(current.minWan))
-    if (current.maxWan < 32) params.set('maxWan', String(current.maxWan))
+    if (current.missingRefPrice) params.set('missingRefPrice', '1')
+    if (current.minWan !== DEFAULT_MIN_WAN) params.set('minWan', String(current.minWan))
+    if (current.maxWan !== DEFAULT_MAX_WAN) params.set('maxWan', String(current.maxWan))
     if (current.sort !== 'price-desc') params.set('sort', current.sort)
     if (!showBoundaries.value) params.set('bounds', '0')
     if (!showSchools.value) params.set('schools', '0')
@@ -432,12 +448,12 @@ onBeforeUnmount(() => {
           <span class="live-dot">API</span>
         </div>
         <div class="header-price-legend" aria-label="房价颜色分档">
-          <span><i style="--color:#2f5fb3"></i>3.5万以下</span>
-          <span><i style="--color:#10a09a"></i>3.5-5万</span>
-          <span><i style="--color:#79a82f"></i>5-7万</span>
-          <span><i style="--color:#e3b657"></i>7-9万</span>
-          <span><i style="--color:#df7b45"></i>9-12万</span>
-          <span><i style="--color:#bb3e45"></i>12万以上</span>
+          <button type="button" :class="{ active: priceBandActive(0, 3.5) }" @click="applyPriceBand(0, 3.5)"><i style="--color:#2f5fb3"></i>3.5万以下</button>
+          <button type="button" :class="{ active: priceBandActive(3.5, 5) }" @click="applyPriceBand(3.5, 5)"><i style="--color:#10a09a"></i>3.5-5万</button>
+          <button type="button" :class="{ active: priceBandActive(5, 7) }" @click="applyPriceBand(5, 7)"><i style="--color:#79a82f"></i>5-7万</button>
+          <button type="button" :class="{ active: priceBandActive(7, 9) }" @click="applyPriceBand(7, 9)"><i style="--color:#e3b657"></i>7-9万</button>
+          <button type="button" :class="{ active: priceBandActive(9, 12) }" @click="applyPriceBand(9, 12)"><i style="--color:#df7b45"></i>9-12万</button>
+          <button type="button" :class="{ active: priceBandActive(12, 50) }" @click="applyPriceBand(12, 50)"><i style="--color:#bb3e45"></i>12万以上</button>
         </div>
       </section>
 

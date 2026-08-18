@@ -87,7 +87,9 @@ button { color: inherit; }
 .stats-strip strong { overflow: hidden; font-family: Georgia, serif; font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
 .stats-strip .desktop-stat strong { font-family: inherit; font-size: 10px; }
 .header-price-legend { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; padding: 0; color: #56686c; font-size: 8px; white-space: nowrap; }
-.header-price-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.header-price-legend button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; border-radius: 99px; background: transparent; padding: 3px 5px; color: inherit; cursor: pointer; font-size: inherit; }
+.header-price-legend button:hover { border-color: rgba(23,52,58,.18); background: #f1eee7; }
+.header-price-legend button.active { border-color: var(--accent); background: rgba(182,76,57,.08); color: var(--accent); }
 .header-price-legend i { width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--color); }
 .header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 0 16px; border-left: 1px solid var(--line); }
 .header-actions button { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; border: 0; border-radius: 6px; background: transparent; padding: 0 10px; color: #42595e; cursor: pointer; font-size: 12px; white-space: nowrap; }
@@ -140,6 +142,7 @@ button { color: inherit; }
 .apply-filters-button:hover { background: #b92f2c; }
 .check-field, .boundary-toggle { display: flex; align-items: center; gap: 9px; color: #40565a; font-size: 12px; cursor: pointer; }
 .check-field input, .boundary-toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+.ref-price-filter { margin-top: 13px; }
 .panel-tools { margin: 0 18px; border-top: 1px solid var(--line); padding-top: 14px; }
 .panel-tools .section-heading strong { color: var(--accent); font: 9px Consolas, monospace; letter-spacing: .12em; }
 .panel-tools .boundary-toggle { margin: 0 0 11px; padding: 0; border: 0; }
