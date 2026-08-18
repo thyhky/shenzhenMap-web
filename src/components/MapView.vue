@@ -42,6 +42,7 @@ let pointsLayer: L.LayerGroup | null = null
 let schoolLayer: L.LayerGroup | null = null
 let schoolZoneLayer: L.GeoJSON | null = null
 let boundaryLayer: L.GeoJSON | null = null
+let selectedPopup: L.Popup | null = null
 let estateController: AbortController | null = null
 let moreController: AbortController | null = null
 let boundaryController: AbortController | null = null
@@ -59,7 +60,7 @@ let schoolData: SchoolFeatureCollection | null = null
 let schoolZoneData: SchoolZoneFeatureCollection | null = null
 
 const priceBands = [35000, 50000, 70000, 90000, 120000]
-const priceColors = ['#315b6d', '#2d817c', '#79a86b', '#e3b657', '#df7b45', '#bb3e45']
+const priceColors = ['#2f5fb3', '#10a09a', '#79a82f', '#e3b657', '#df7b45', '#bb3e45']
 
 function priceColor(price: number | null) {
   if (!price) return '#f7f1e6'
@@ -85,13 +86,50 @@ function popupContent(title: string, lines: string[]) {
   return root
 }
 
+function selectedEstateContent(estate: EstateDetail) {
+  const primary = estate.nearbySchools.find((school) => school.level === 'primary')
+  const junior = estate.nearbySchools.find((school) => school.level === 'junior')
+  const root = document.createElement('div')
+  root.className = 'selected-estate-card'
+  const title = document.createElement('strong')
+  title.textContent = estate.name
+  root.appendChild(title)
+  const facts = [
+    `${priceText(estate.price)} · 租售比 ${estate.rentYield === null ? '暂无' : `${estate.rentYield.toFixed(2)}%`}`,
+    `小学学位：${primary?.name ?? '暂无邻近学校'}`,
+    `初中学位：${junior?.name ?? '暂无邻近学校'}`,
+  ]
+  facts.forEach((fact) => {
+    const line = document.createElement('span')
+    line.textContent = fact
+    root.appendChild(line)
+  })
+  return root
+}
+
+function drawSelectedEstate(estate: EstateDetail) {
+  if (!map) return
+  selectedPopup ??= L.popup({
+    closeButton: true,
+    autoPan: true,
+    className: 'selected-estate-popup',
+    offset: [0, -7],
+  })
+  selectedPopup
+    .setLatLng([estate.lat, estate.lng])
+    .setContent(selectedEstateContent(estate))
+    .openOn(map)
+}
+
 async function selectEstate(id: number) {
   detailController?.abort()
   const controller = new AbortController()
   detailController = controller
   emit('detail-loading', true)
   try {
-    emit('select', await getEstate(id, controller.signal))
+    const estate = await getEstate(id, controller.signal)
+    drawSelectedEstate(estate)
+    emit('select', estate)
   } catch (error) {
     if ((error as Error).name !== 'AbortError') emit('error', (error as Error).message)
   } finally {

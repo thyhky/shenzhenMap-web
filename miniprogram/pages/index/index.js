@@ -25,9 +25,9 @@ function request(path, data = {}) {
 
 function priceColor(price) {
   if (!price) return '#7b8787'
-  if (price < 35000) return '#315b6d'
-  if (price < 50000) return '#2d817c'
-  if (price < 70000) return '#79a86b'
+  if (price < 35000) return '#2f5fb3'
+  if (price < 50000) return '#10a09a'
+  if (price < 70000) return '#79a82f'
   if (price < 90000) return '#e3b657'
   if (price < 120000) return '#df7b45'
   return '#bb3e45'
@@ -35,9 +35,9 @@ function priceColor(price) {
 
 function priceFillColor(price) {
   if (!price) return '#b7c0bd'
-  if (price < 35000) return '#9ab5c0'
-  if (price < 50000) return '#91c4bd'
-  if (price < 70000) return '#b6d19f'
+  if (price < 35000) return '#9cb7e6'
+  if (price < 50000) return '#8ed8d2'
+  if (price < 70000) return '#bfd98f'
   if (price < 90000) return '#ecd28f'
   if (price < 120000) return '#eab08f'
   return '#df9297'
@@ -103,9 +103,9 @@ function rentYieldText(value) {
 
 function heatmapColor(price) {
   if (!price) return '#7b8787'
-  if (price < 35000) return '#315b6d'
-  if (price < 50000) return '#2d817c'
-  if (price < 70000) return '#79a86b'
+  if (price < 35000) return '#2f5fb3'
+  if (price < 50000) return '#10a09a'
+  if (price < 70000) return '#79a82f'
   if (price < 90000) return '#e3b657'
   if (price < 120000) return '#df7b45'
   return '#bb3e45'
@@ -127,6 +127,14 @@ Page({
     minWan: 2,
     maxWan: 32,
     pricedOnly: true,
+    appliedFilters: {
+      district: '',
+      street: '',
+      keyword: '',
+      minWan: 2,
+      maxWan: 32,
+      pricedOnly: true,
+    },
     showSchools: false,
     showZones: false,
     activeSheet: '',
@@ -210,19 +218,20 @@ Page({
   async loadMap(view = initialRegion, zoom = this.data.scale) {
     this.loadingMap = true
     const requestId = ++this.mapRequestId
+    const applied = this.data.appliedFilters
     this.setData({ loading: true })
     try {
       const map = await request('/api/estates', {
         ...view,
         zoom,
-        minPrice: this.data.minWan * 10000,
-        maxPrice: this.data.maxWan * 10000,
-        pricedOnly: this.data.pricedOnly ? 1 : 0,
+        minPrice: applied.minWan * 10000,
+        maxPrice: applied.maxWan * 10000,
+        pricedOnly: applied.pricedOnly ? 1 : 0,
         page: 1,
         pageSize: 20,
-        district: this.data.district,
-        street: this.data.street,
-        q: this.data.keyword,
+        district: applied.district,
+        street: applied.street,
+        q: applied.keyword,
       })
       const circles = (map.items || []).map((item) => ({
         latitude: item.lat,
@@ -232,10 +241,32 @@ Page({
         fillColor: priceFillColor(item.kind === 'cluster' ? item.avgPrice : item.price),
         strokeWidth: 1,
       }))
+      const markers = (map.items || [])
+        .filter((item) => item.kind === 'cluster')
+        .map((item, index) => {
+          const content = String(item.count)
+          return {
+            id: 1000000 + index,
+            latitude: item.lat,
+            longitude: item.lng,
+            width: 1,
+            height: 1,
+            alpha: 0,
+            label: {
+              content,
+              color: '#ffffff',
+              fontSize: 10,
+              anchorX: content.length >= 3 ? -9 : -6,
+              anchorY: -5,
+              textAlign: 'center',
+            },
+            item,
+          }
+        })
       if (requestId !== this.mapRequestId) return
       const results = (map.results || []).map((item) => ({ ...item, priceText: priceText(item.price) }))
       this.setData({
-        markers: [],
+        markers,
         mapItems: map.items || [],
         estateCircles: circles,
         circles: this.composeCircles(circles, this.data.schoolCircles || []),
@@ -257,18 +288,19 @@ Page({
 
   async loadRanking(page = 1) {
     this.setData({ rankingLoading: true })
+    const applied = this.data.appliedFilters
     try {
       const ranking = await request('/api/ranking', {
         sort: this.data.rankingSort,
         minSamples: 3,
         page,
         pageSize: 20,
-        district: this.data.district,
-        street: this.data.street,
-        q: this.data.keyword,
-        minPrice: this.data.minWan * 10000,
-        maxPrice: this.data.maxWan * 10000,
-        pricedOnly: this.data.pricedOnly ? 1 : 0,
+        district: applied.district,
+        street: applied.street,
+        q: applied.keyword,
+        minPrice: applied.minWan * 10000,
+        maxPrice: applied.maxWan * 10000,
+        pricedOnly: applied.pricedOnly ? 1 : 0,
       })
       const rows = (ranking.items || []).map((item) => ({
         ...item,
@@ -293,6 +325,7 @@ Page({
   async loadMoreRanking() {
     if (!this.data.rankingHasMore || this.data.rankingLoading) return
     const page = this.data.rankingPage + 1
+    const applied = this.data.appliedFilters
     this.setData({ rankingLoading: true })
     try {
       const ranking = await request('/api/ranking', {
@@ -300,12 +333,12 @@ Page({
         minSamples: 3,
         page,
         pageSize: 20,
-        district: this.data.district,
-        street: this.data.street,
-        q: this.data.keyword,
-        minPrice: this.data.minWan * 10000,
-        maxPrice: this.data.maxWan * 10000,
-        pricedOnly: this.data.pricedOnly ? 1 : 0,
+        district: applied.district,
+        street: applied.street,
+        q: applied.keyword,
+        minPrice: applied.minWan * 10000,
+        maxPrice: applied.maxWan * 10000,
+        pricedOnly: applied.pricedOnly ? 1 : 0,
       })
       const seen = new Set(this.data.rankingItems.map((item) => item.id))
       const rows = (ranking.items || [])
@@ -387,18 +420,12 @@ Page({
       streets,
       streetOptions: [{ name: '全部街道', value: '' }].concat(streets),
       streetIndex: 0,
-    }, () => {
-      this.loadMap()
-      this.loadRanking(1)
     })
   },
 
   selectStreet(event) {
     const option = this.data.streetOptions[event.detail.value]
-    this.setData({ street: option?.value || '', streetIndex: event.detail.value }, () => {
-      this.loadMap()
-      this.loadRanking(1)
-    })
+    this.setData({ street: option?.value || '', streetIndex: event.detail.value })
   },
 
   handleKeywordInput(event) {
@@ -406,7 +433,17 @@ Page({
   },
 
   applyFilters() {
-    this.setData({ activeSheet: '' }, () => {
+    this.setData({
+      activeSheet: '',
+      appliedFilters: {
+        district: this.data.district,
+        street: this.data.street,
+        keyword: this.data.keyword,
+        minWan: this.data.minWan,
+        maxWan: this.data.maxWan,
+        pricedOnly: this.data.pricedOnly,
+      },
+    }, () => {
       this.loadMap()
       this.loadRanking(1)
     })
@@ -426,7 +463,7 @@ Page({
   },
 
   togglePricedOnly() {
-    this.setData({ pricedOnly: !this.data.pricedOnly }, () => this.loadRanking(1))
+    this.setData({ pricedOnly: !this.data.pricedOnly })
   },
 
   toggleSchools() {
@@ -469,18 +506,19 @@ Page({
   noop() {},
 
   exportHeatmap() {
-    if (!this.data.district) {
+    const applied = this.data.appliedFilters
+    if (!applied.district) {
       wx.showToast({ title: '请先选择行政区，再导出热力图', icon: 'none' })
       return
     }
     if (this.data.exportingHeatmap) return
     this.setData({ exportingHeatmap: true })
     request('/api/heatmap', {
-      district: this.data.district,
-      street: this.data.street,
-      pricedOnly: this.data.pricedOnly ? 1 : 0,
-      minPrice: this.data.minWan * 10000,
-      maxPrice: this.data.maxWan * 10000,
+      district: applied.district,
+      street: applied.street,
+      pricedOnly: applied.pricedOnly ? 1 : 0,
+      minPrice: applied.minWan * 10000,
+      maxPrice: applied.maxWan * 10000,
     }).then((data) => {
       if (!data.bounds) throw new Error('当前范围没有可导出的数据')
       this.renderHeatmap(data)
@@ -749,13 +787,14 @@ Page({
 
   exportRankingCsv() {
     if (this.data.exportingCsv) return
+    const applied = this.data.appliedFilters
     const query = buildQuery({
-      q: this.data.keyword,
-      district: this.data.district,
-      street: this.data.street,
-      minPrice: this.data.minWan * 10000,
-      maxPrice: this.data.maxWan * 10000,
-      pricedOnly: this.data.pricedOnly ? 1 : 0,
+      q: applied.keyword,
+      district: applied.district,
+      street: applied.street,
+      minPrice: applied.minWan * 10000,
+      maxPrice: applied.maxWan * 10000,
+      pricedOnly: applied.pricedOnly ? 1 : 0,
       minSamples: 3,
       limit: 5000,
     })

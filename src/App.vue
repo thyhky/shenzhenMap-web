@@ -72,6 +72,7 @@ function readUrlState(): {
 const urlState = readUrlState()
 
 const filters = ref<EstateFilters>(urlState.filters)
+const filterDraft = ref<EstateFilters>({ ...urlState.filters })
 const meta = ref<MetaResponse | null>(null)
 const snapshot = ref<MapResponse | null>(null)
 const selectedEstate = ref<EstateDetail | null>(null)
@@ -94,6 +95,7 @@ const showFiltersPanel = ref(true)
 const showResultsPanel = ref(true)
 const rightPanelTab = ref<RightPanelTab>('results')
 const heatmapLoading = ref(false)
+const showMoreTools = ref(false)
 const mobileSheet = ref<MobileSheet>(null)
 const errorMessage = ref('')
 const mapView = ref<InstanceType<typeof MapView> | null>(null)
@@ -129,6 +131,11 @@ const schoolScope = computed(() => (
 
 function handleSnapshot(value: MapResponse) {
   snapshot.value = value
+}
+
+function applyFilterDraft() {
+  filters.value = { ...filterDraft.value, sort: filters.value.sort }
+  if (window.matchMedia('(max-width: 900px)').matches) mobileSheet.value = null
 }
 
 function formatTimestamp(value: string | null | undefined) {
@@ -287,9 +294,9 @@ function showError(message: string) {
 
 function heatmapColor(price: number | null) {
   if (!price) return 'rgba(92, 105, 109, 0.42)'
-  if (price < 35000) return 'rgba(49, 91, 109, 0.58)'
-  if (price < 50000) return 'rgba(45, 129, 124, 0.58)'
-  if (price < 70000) return 'rgba(121, 168, 107, 0.58)'
+  if (price < 35000) return 'rgba(47, 95, 179, 0.62)'
+  if (price < 50000) return 'rgba(16, 160, 154, 0.62)'
+  if (price < 70000) return 'rgba(121, 168, 47, 0.62)'
   if (price < 90000) return 'rgba(227, 182, 87, 0.62)'
   if (price < 120000) return 'rgba(223, 123, 69, 0.64)'
   return 'rgba(187, 62, 69, 0.66)'
@@ -404,6 +411,7 @@ onMounted(async () => {
 })
 
 watch(() => filters.value, () => { scheduleRanking(350); syncUrl() }, { deep: true })
+watch(() => filters.value.sort, (sort) => { filterDraft.value.sort = sort })
 watch(rankingSort, () => scheduleRanking(0))
 watch([showBoundaries, showSchools, showSchoolZones], () => syncUrl())
 
@@ -419,19 +427,25 @@ onBeforeUnmount(() => {
   <main class="app-shell">
     <header class="app-header">
       <section class="brand-card">
-        <div class="brand-kicker">SHENZHEN · HOUSING ATLAS</div>
         <div class="brand-line">
           <h1>深圳住区观察</h1>
           <span class="live-dot">API</span>
         </div>
-        <p>展示挂牌均价，不是成交价，仅供城市研究参考。</p>
+        <div class="header-price-legend" aria-label="房价颜色分档">
+          <span><i style="--color:#2f5fb3"></i>3.5万以下</span>
+          <span><i style="--color:#10a09a"></i>3.5-5万</span>
+          <span><i style="--color:#79a82f"></i>5-7万</span>
+          <span><i style="--color:#e3b657"></i>7-9万</span>
+          <span><i style="--color:#df7b45"></i>9-12万</span>
+          <span><i style="--color:#bb3e45"></i>12万以上</span>
+        </div>
       </section>
 
       <section class="stats-strip" aria-label="全市与当前范围统计">
         <div><small>小区</small><strong>{{ meta?.totals.estates ?? '-' }}</strong></div>
         <div><small>有价</small><strong>{{ meta?.totals.priced ?? '-' }}</strong></div>
-        <div><small>当前均价</small><strong>{{ averagePrice }}</strong></div>
-        <div class="desktop-stat"><small>来源观测</small><strong>{{ observedAtLabel }}</strong></div>
+        <div><small>均价</small><strong>{{ averagePrice }}</strong></div>
+        <div class="desktop-stat"><small>观测</small><strong>{{ observedAtLabel }}</strong></div>
       </section>
 
       <nav class="header-actions" aria-label="页面工具">
@@ -446,7 +460,7 @@ onBeforeUnmount(() => {
           <div class="panel-title-copy"><span>筛选器</span><small>FILTER</small></div>
           <button type="button" class="panel-close" aria-label="收起筛选器" @click="showFiltersPanel = false">‹</button>
         </div>
-        <FiltersPanel v-model="filters" :meta="meta" />
+        <FiltersPanel v-model="filterDraft" :meta="meta" @apply="applyFilterDraft" />
         <section class="panel-tools" aria-label="地图图层">
           <div class="section-heading"><span>地图图层</span><strong>LAYER</strong></div>
           <label class="boundary-toggle">
@@ -462,7 +476,10 @@ onBeforeUnmount(() => {
             <span>显示学区范围（近似）</span>
           </label>
         </section>
-        <section class="panel-exports" aria-label="导出工具">
+        <button class="panel-more-tools" type="button" @click="showMoreTools = !showMoreTools">
+          <span>{{ showMoreTools ? '收起工具' : '更多工具' }}</span><span>{{ showMoreTools ? '−' : '+' }}</span>
+        </button>
+        <section v-if="showMoreTools" class="panel-exports" aria-label="导出工具">
           <button class="heatmap-export-button" type="button" :disabled="heatmapLoading" @click="void exportHeatmap()">
             {{ heatmapLoading ? '正在生成…' : '导出当前区域热力图' }}
           </button>
@@ -496,18 +513,6 @@ onBeforeUnmount(() => {
           <button v-if="!showResultsPanel" class="reopen-right" type="button" @click="showResultsPanel = true">‹ 范围结果</button>
         </div>
         <div v-if="mapLimitNotice" class="map-limit-notice" role="status">{{ mapLimitNotice }}</div>
-
-        <div class="legend-card">
-          <span><i style="--color:#315b6d"></i>3.5万以下</span>
-          <span><i style="--color:#2d817c"></i>3.5-5万</span>
-          <span><i style="--color:#79a86b"></i>5-7万</span>
-          <span><i style="--color:#e3b657"></i>7-9万</span>
-          <span><i style="--color:#df7b45"></i>9-12万</span>
-          <span><i style="--color:#bb3e45"></i>12万以上</span>
-          <span class="legend-school"><i class="school-marker school-marker--primary"></i>小学</span>
-          <span class="legend-school"><i class="school-marker school-marker--junior"></i>初中</span>
-          <span class="legend-school"><i style="--color:#6d3fc9;border-radius:2px"></i>学区范围（近似）</span>
-        </div>
 
       </section>
 
@@ -571,7 +576,7 @@ onBeforeUnmount(() => {
         <button type="button" aria-label="关闭" @click="mobileSheet = null">关闭</button>
       </div>
       <template v-if="mobileSheet === 'filters'">
-        <FiltersPanel v-model="filters" :meta="meta" />
+        <FiltersPanel v-model="filterDraft" :meta="meta" @apply="applyFilterDraft" />
         <label class="boundary-toggle mobile-boundary">
           <input v-model="showBoundaries" type="checkbox">
           <span>显示街道边界</span>
@@ -584,6 +589,15 @@ onBeforeUnmount(() => {
           <input v-model="showSchoolZones" type="checkbox">
           <span>显示学区范围（近似）</span>
         </label>
+        <button class="panel-more-tools mobile-more-tools" type="button" @click="showMoreTools = !showMoreTools">
+          <span>{{ showMoreTools ? '收起工具' : '更多工具' }}</span><span>{{ showMoreTools ? '−' : '+' }}</span>
+        </button>
+        <section v-if="showMoreTools" class="panel-exports mobile-exports" aria-label="导出工具">
+          <button class="heatmap-export-button" type="button" :disabled="heatmapLoading" @click="void exportHeatmap()">
+            {{ heatmapLoading ? '正在生成…' : '导出当前区域热力图' }}
+          </button>
+          <button class="heatmap-export-button" type="button" @click="exportDistrictRankingCsv()">导出租售比+最佳学校 CSV</button>
+        </section>
       </template>
       <ResultsPanel
         v-else-if="mobileSheet === 'results'"

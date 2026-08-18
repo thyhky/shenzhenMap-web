@@ -126,7 +126,7 @@
   </view>
 
   <view class="bottom-nav">
-    <view class="nav-item {{activeSheet === 'filters' ? 'active' : ''}}" bindtap="toggleFilters"><text>筛选</text><text class="nav-meta">{{district || '全部区域'}}</text></view>
+    <view class="nav-item {{activeSheet === 'filters' ? 'active' : ''}}" bindtap="toggleFilters"><text>筛选</text><text class="nav-meta">{{appliedFilters.district || '全部区域'}}</text></view>
     <view class="nav-item {{activeSheet === 'results' ? 'active' : ''}}" bindtap="toggleResults"><text>结果</text><text class="nav-meta">{{total}} 个</text></view>
     <view class="nav-item {{activeSheet === 'detail' ? 'active' : ''}}" bindtap="toggleDetail"><text>详情</text><text class="nav-meta">{{selected ? selected.name : '未选择'}}</text></view>
   </view>

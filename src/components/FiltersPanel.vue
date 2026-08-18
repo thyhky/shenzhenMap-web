@@ -9,6 +9,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: EstateFilters]
+  apply: []
 }>()
 
 const streets = computed(() => {
@@ -90,6 +91,7 @@ function clearCondition(key: 'price' | 'district' | 'street' | 'keyword') {
         placeholder="例如：香蜜湖"
         :value="modelValue.keyword"
         @input="update({ keyword: ($event.target as HTMLInputElement).value })"
+        @keyup.enter="emit('apply')"
       >
     </label>
 
@@ -169,6 +171,10 @@ function clearCondition(key: 'price' | 'district' | 'street' | 'keyword') {
         @input="update({ maxWan: Math.max(Number(($event.target as HTMLInputElement).value), modelValue.minWan) })"
       >
     </label>
+
+    <button class="apply-filters-button" type="button" @click="emit('apply')">
+      应用筛选 <span v-if="selectedConditions.length">（{{ selectedConditions.length }}）</span>
+    </button>
 
   </section>
 </template>
