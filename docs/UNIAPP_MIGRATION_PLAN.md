@@ -90,9 +90,10 @@ H5 输出到 `uniapp/dist/build/h5/`；微信小程序输出到 `uniapp/dist/bui
 ## H5 预览记录
 
 - 2026-08-20 部署地址：<https://shenzhen-estate-map-uni-preview.shenzhen-estate-map-cloudflare.workers.dev>
-- Worker 版本：`44a9f599-51e3-4586-8e2e-dcc147637b63`
+- Worker 版本：`b54e24eb-94b4-4a28-8537-51ddcb820802`
 - 自动验收通过：健康检查、4302 条小区数据、边缘缓存、搜索分页、价格/租售比排行、CSV、详情、价格历史、街道、学校、学区、SPA 回退和前端功能标记。
 - 静态资源验证通过：CSP 生效，带哈希的 JS/CSS 使用一年 immutable 缓存。
+- Chromium 验收通过：1440px 桌面三栏和 390px 手机视口均正常渲染；手机页面无横向滚动，底图、聚合点、图层开关、数据说明、榜单、结果选择、详情和价格历史可用。
 - 待人工验收：桌面和手机浏览器交互、地图拖动/缩放、文件下载；微信开发者工具和真机地图、文件分享及相册权限。
 
 ## 约束

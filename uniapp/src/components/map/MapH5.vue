@@ -326,28 +326,28 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <view ref="mapRoot" class="map-adapter map-h5" />
+  <div ref="mapRoot" class="map-adapter map-h5" />
 </template>
 
 <style>
 .map-adapter.map-h5 { position: absolute; z-index: 0; inset: 0; overflow: hidden; background: #d8d1c3; }
-.map-h5.leaflet-container { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
-.map-h5 .leaflet-control-attribution { margin-bottom: calc(104rpx + env(safe-area-inset-bottom)); font-size: 9px; }
-.map-h5 .leaflet-control-zoom { margin-right: 12px !important; margin-bottom: calc(122rpx + env(safe-area-inset-bottom)) !important; border: 0 !important; box-shadow: 0 5px 18px rgba(18, 39, 43, 0.2) !important; }
-.map-h5 .leaflet-control-zoom a { border-color: rgba(23, 52, 58, 0.16) !important; background: #fbf7ef !important; color: #17343a !important; }
-.uni-map-popup { display: grid; gap: 3px; min-width: 150px; color: #17343a; }
-.uni-map-popup strong { font-size: 15px; }
-.uni-map-popup span { color: #53666a; font-size: 12px; }
-.uni-estate-label { border: 1px solid rgba(23, 52, 58, 0.16) !important; border-radius: 5px !important; background: rgba(253, 249, 240, 0.92) !important; color: #17343a !important; box-shadow: none !important; }
-.uni-estate-label::before { display: none; }
-.uni-cluster-count { border: 0 !important; background: transparent !important; color: #fff !important; box-shadow: none !important; font: 700 10px/1 Consolas, monospace !important; text-shadow: 0 1px 2px rgba(16, 43, 46, 0.45); pointer-events: none !important; }
-.uni-cluster-count::before { display: none !important; }
-.uni-boundary-label { border: 1px solid rgba(168, 88, 67, 0.35) !important; border-radius: 5px !important; background: rgba(253, 249, 240, 0.94) !important; box-shadow: none !important; }
-.uni-school-label { border: 1px solid rgba(90, 60, 160, 0.45) !important; border-radius: 5px !important; background: rgba(249, 246, 255, 0.95) !important; color: #3c2f6e !important; box-shadow: none !important; font-size: 10px !important; }
-.uni-school-label::before { display: none; }
-.uni-school-marker-wrap { border: 0; background: transparent; }
-.uni-school-marker { position: relative; display: block; width: 18px; height: 18px; border: 2px solid #fff; border-radius: 50% 50% 50% 0; box-shadow: 0 2px 6px rgba(24, 43, 47, 0.35); transform: rotate(-45deg); }
-.uni-school-marker::after { position: absolute; inset: 4px; border-radius: 50%; background: rgba(255, 255, 255, 0.92); content: ''; }
-.uni-school-marker--primary { background: #6d3fc9; }
-.uni-school-marker--junior { background: #c93f77; }
+:global(.map-h5.leaflet-container) { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+:global(.map-h5 .leaflet-control-attribution) { margin-bottom: calc(104rpx + env(safe-area-inset-bottom)); font-size: 9px; }
+:global(.map-h5 .leaflet-control-zoom) { margin-right: 12px !important; margin-bottom: calc(122rpx + env(safe-area-inset-bottom)) !important; border: 0 !important; box-shadow: 0 5px 18px rgba(18, 39, 43, 0.2) !important; }
+:global(.map-h5 .leaflet-control-zoom a) { border-color: rgba(23, 52, 58, 0.16) !important; background: #fbf7ef !important; color: #17343a !important; }
+:global(.uni-map-popup) { display: grid; gap: 3px; min-width: 150px; color: #17343a; }
+:global(.uni-map-popup strong) { font-size: 15px; }
+:global(.uni-map-popup span) { color: #53666a; font-size: 12px; }
+:global(.uni-estate-label) { border: 1px solid rgba(23, 52, 58, 0.16) !important; border-radius: 5px !important; background: rgba(253, 249, 240, 0.92) !important; color: #17343a !important; box-shadow: none !important; }
+:global(.uni-estate-label::before) { display: none; }
+:global(.uni-cluster-count) { border: 0 !important; background: transparent !important; color: #fff !important; box-shadow: none !important; font: 700 10px/1 Consolas, monospace !important; text-shadow: 0 1px 2px rgba(16, 43, 46, 0.45); pointer-events: none !important; }
+:global(.uni-cluster-count::before) { display: none !important; }
+:global(.uni-boundary-label) { border: 1px solid rgba(168, 88, 67, 0.35) !important; border-radius: 5px !important; background: rgba(253, 249, 240, 0.94) !important; box-shadow: none !important; }
+:global(.uni-school-label) { border: 1px solid rgba(90, 60, 160, 0.45) !important; border-radius: 5px !important; background: rgba(249, 246, 255, 0.95) !important; color: #3c2f6e !important; box-shadow: none !important; font-size: 10px !important; }
+:global(.uni-school-label::before) { display: none; }
+:global(.uni-school-marker-wrap) { border: 0; background: transparent; }
+:global(.uni-school-marker) { position: relative; display: block; width: 18px; height: 18px; border: 2px solid #fff; border-radius: 50% 50% 50% 0; box-shadow: 0 2px 6px rgba(24, 43, 47, 0.35); transform: rotate(-45deg); }
+:global(.uni-school-marker::after) { position: absolute; inset: 4px; border-radius: 50%; background: rgba(255, 255, 255, 0.92); content: ''; }
+:global(.uni-school-marker--primary) { background: #6d3fc9; }
+:global(.uni-school-marker--junior) { background: #c93f77; }
 </style>

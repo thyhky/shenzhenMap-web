@@ -49,7 +49,7 @@ const emit = defineEmits<{ methodology: [] }>()
   align-items: center;
 }
 
-.brand-line { gap: 10rpx; }
+.brand-line { flex: none; gap: 10rpx; white-space: nowrap; }
 .title { color: #17343a; font-family: serif; font-size: 32rpx; font-weight: 700; }
 .api-badge { border: 1rpx solid #2f7867; border-radius: 99rpx; padding: 2rpx 8rpx; color: #2f7867; font-size: 16rpx; }
 .stats { gap: 16rpx; color: #617074; font-size: 19rpx; white-space: nowrap; }
@@ -58,7 +58,7 @@ const emit = defineEmits<{ methodology: [] }>()
 @media (max-width: 480px) {
   .header-card { gap: 8rpx; }
   .title { font-size: 27rpx; }
-  .stats { gap: 8rpx; font-size: 17rpx; }
+  .stats { min-width: 0; justify-content: flex-end; gap: 8rpx; font-size: 17rpx; }
   .observed { display: none; }
 }
 </style>
