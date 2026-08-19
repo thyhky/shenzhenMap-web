@@ -1,6 +1,17 @@
-import type { EstateFilters, MapResponse, MetaResponse, Viewport } from '@/domain/types'
+import type {
+  EstateFilters,
+  MapResponse,
+  MetaResponse,
+  SchoolFeatureCollection,
+  SchoolZoneFeatureCollection,
+  StreetFeatureCollection,
+  Viewport,
+} from '@/domain/types'
 
 let apiBase = ''
+let streetBoundaryCache: StreetFeatureCollection | null = null
+let schoolCache: SchoolFeatureCollection | null = null
+let schoolZoneCache: SchoolZoneFeatureCollection | null = null
 
 // #ifdef MP-WEIXIN
 apiBase = 'https://map.okzer.xyz'
@@ -48,4 +59,37 @@ export function getMapData(viewport: Viewport, filters: EstateFilters): Promise<
     page: 1,
     pageSize: 20,
   })
+}
+
+export async function getStreetBoundaries(): Promise<StreetFeatureCollection> {
+  if (streetBoundaryCache) return streetBoundaryCache
+  const response = await requestJson<StreetFeatureCollection>('/api/streets')
+  streetBoundaryCache = response
+  return response
+}
+
+export async function getSchools(): Promise<SchoolFeatureCollection> {
+  if (schoolCache) return schoolCache
+  const response = await requestJson<SchoolFeatureCollection>('/api/schools')
+  schoolCache = response
+  return response
+}
+
+export async function getSchoolZones(): Promise<SchoolZoneFeatureCollection> {
+  if (schoolZoneCache) return schoolZoneCache
+  const response = await requestJson<SchoolZoneFeatureCollection>('/api/layers/school-zones')
+  schoolZoneCache = response
+  return response
+}
+
+export function getCachedStreetBoundaries() {
+  return streetBoundaryCache
+}
+
+export function getCachedSchools() {
+  return schoolCache
+}
+
+export function getCachedSchoolZones() {
+  return schoolZoneCache
 }

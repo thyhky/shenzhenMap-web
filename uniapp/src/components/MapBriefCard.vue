@@ -1,24 +1,36 @@
 <script setup lang="ts">
-import type { MapItem } from '@/domain/types'
+import { computed } from 'vue'
+import type { MapSelection } from '@/domain/types'
 
-const props = defineProps<{ item: MapItem }>()
+const props = defineProps<{ item: MapSelection }>()
 const emit = defineEmits<{ close: []; details: [] }>()
 
-function priceText() {
-  const price = props.item.kind === 'cluster' ? props.item.avgPrice : props.item.price
-  return price ? `${(price / 10000).toFixed(1)}万/㎡` : '暂无价格'
-}
+const summary = computed(() => {
+  if ('kind' in props.item) {
+    const price = props.item.kind === 'cluster' ? props.item.avgPrice : props.item.price
+    return {
+      title: props.item.kind === 'cluster' ? `${props.item.count} 个小区` : props.item.name,
+      meta: props.item.kind === 'cluster'
+        ? `${props.item.pricedCount} 个有有效价格`
+        : `${props.item.district} · ${props.item.street}`,
+      value: price ? `${(price / 10000).toFixed(1)}万/㎡` : '暂无价格',
+    }
+  }
+  return {
+    title: props.item.properties.name,
+    meta: `${props.item.properties.levelLabel} · ${props.item.properties.district}`,
+    value: `${props.item.properties.zones.length} 个社区`,
+  }
+})
 </script>
 
 <template>
   <view class="brief-card">
     <view class="copy">
-      <text class="name">{{ item.kind === 'cluster' ? `${item.count} 个小区` : item.name }}</text>
-      <text class="meta">
-        {{ item.kind === 'cluster' ? `${item.pricedCount} 个有有效价格` : `${item.district} · ${item.street}` }}
-      </text>
+      <text class="name">{{ summary.title }}</text>
+      <text class="meta">{{ summary.meta }}</text>
     </view>
-    <text class="price">{{ priceText() }}</text>
+    <text class="price">{{ summary.value }}</text>
     <button class="details" @click="emit('details')">查看</button>
     <button class="close" @click="emit('close')">×</button>
   </view>

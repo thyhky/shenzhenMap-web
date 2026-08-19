@@ -1,17 +1,37 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted } from 'vue'
-import type { MapItem, MapViewport } from '@/domain/types'
+import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import type {
+  MapItem,
+  MapSelection,
+  MapViewport,
+  Position,
+  SchoolFeature,
+  SchoolZoneFeature,
+  StreetFeature,
+} from '@/domain/types'
+import { getCachedSchools, getCachedSchoolZones, getCachedStreetBoundaries } from '@/services/api'
 import { gcj02ToWgs84, wgs84ToGcj02 } from '@/utils/coordinates'
+import {
+  geometryBounds,
+  intersectsViewport,
+  outerRings,
+  pointInRing,
+  simplifyRing,
+} from '@/utils/geometry'
 
 const props = defineProps<{
   latitude: number
   longitude: number
   zoom: number
   items: MapItem[]
+  layerRevision: number
+  showBoundaries: boolean
+  showSchools: boolean
+  showSchoolZones: boolean
 }>()
 
 const emit = defineEmits<{
-  select: [item: MapItem]
+  select: [item: MapSelection]
   focus: [view: { latitude: number; longitude: number; zoom: number }]
   'viewport-change': [viewport: MapViewport]
 }>()
@@ -19,7 +39,7 @@ const emit = defineEmits<{
 const componentInstance = getCurrentInstance()?.proxy
 let mapContext: UniNamespace.MapContext | null = null
 let regionTimer: ReturnType<typeof setTimeout> | null = null
-let lastViewport: MapViewport | null = null
+const lastViewport = ref<MapViewport | null>(null)
 
 const priceBands = [35000, 50000, 70000, 90000, 120000]
 const colors = ['#2f5fb3', '#10a09a', '#79a82f', '#e3b657', '#df7b45', '#bb3e45']
@@ -46,7 +66,34 @@ function itemRadius(item: MapItem) {
 }
 
 const mapCenter = computed(() => wgs84ToGcj02(props.latitude, props.longitude))
-const circles = computed(() => props.items.map((item) => {
+const activeBoundaries = computed(() => {
+  void props.layerRevision
+  return props.showBoundaries ? getCachedStreetBoundaries() : null
+})
+const activeSchools = computed(() => {
+  void props.layerRevision
+  return props.showSchools ? getCachedSchools() : null
+})
+const activeSchoolZones = computed(() => {
+  void props.layerRevision
+  return props.showSchoolZones ? getCachedSchoolZones() : null
+})
+const visibleSchools = computed(() => {
+  const viewport = lastViewport.value
+  if (!activeSchools.value || !viewport) return []
+  const margin = Math.max(viewport.east - viewport.west, viewport.north - viewport.south) * 0.03
+  return activeSchools.value.features.filter((school) => {
+    const [longitude, latitude] = school.geometry.coordinates
+    return longitude >= viewport.west - margin
+      && longitude <= viewport.east + margin
+      && latitude >= viewport.south - margin
+      && latitude <= viewport.north + margin
+  })
+})
+const visibleMapItems = computed(() => (
+  props.items.slice(0, Math.max(0, 980 - visibleSchools.value.length))
+))
+const estateCircles = computed(() => visibleMapItems.value.map((item) => {
   const coordinate = wgs84ToGcj02(item.lat, item.lng)
   return {
     latitude: coordinate.latitude,
@@ -57,8 +104,130 @@ const circles = computed(() => props.items.map((item) => {
     strokeWidth: 1,
   }
 }))
+const schoolCircles = computed(() => {
+  return visibleSchools.value.map((school) => {
+    const [longitude, latitude] = school.geometry.coordinates
+    const coordinate = wgs84ToGcj02(latitude, longitude)
+    return {
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+      radius: 170,
+      color: school.properties.level === 'junior' ? '#c93f77' : '#6d3fc9',
+      fillColor: school.properties.level === 'junior' ? '#f0c6d5' : '#d5c9f2',
+      strokeWidth: 2,
+    }
+  })
+})
+const circles = computed(() => {
+  return estateCircles.value.concat(schoolCircles.value)
+})
 
-const clusterItems = computed(() => props.items.filter((item) => item.kind === 'cluster'))
+const polygonState = computed(() => {
+  const viewport = lastViewport.value
+  const empty = {
+    overlays: [] as Array<{
+      points: Array<{ latitude: number; longitude: number }>
+      strokeColor: string
+      fillColor: string
+      strokeWidth: number
+    }>,
+    zoneHits: [] as Array<{ feature: SchoolZoneFeature; rings: Position[][] }>,
+    streetHits: [] as Array<{ feature: StreetFeature; rings: Position[][] }>,
+  }
+  if (!viewport) return empty
+  const items: Array<{
+    points: Array<{ latitude: number; longitude: number }>
+    strokeColor: string
+    fillColor: string
+    strokeWidth: number
+  }> = []
+  const system = uni.getSystemInfoSync()
+  const tolerance = Math.max(
+    (viewport.east - viewport.west) / Math.max(320, system.windowWidth),
+    (viewport.north - viewport.south) / Math.max(480, system.windowHeight),
+  ) * 1.5
+  const ringIsVisible = (ring: Position[]) => {
+    const bounds = {
+      west: Math.min(...ring.map(([longitude]) => longitude)),
+      south: Math.min(...ring.map(([, latitude]) => latitude)),
+      east: Math.max(...ring.map(([longitude]) => longitude)),
+      north: Math.max(...ring.map(([, latitude]) => latitude)),
+    }
+    return intersectsViewport(bounds, viewport)
+  }
+  const zoneGroups = (activeSchoolZones.value?.features ?? [])
+    .map((feature) => ({ feature, rings: outerRings(feature.geometry).filter(ringIsVisible) }))
+    .filter((group) => group.rings.length)
+  const streetGroups = (activeBoundaries.value?.features ?? [])
+    .map((feature) => ({ feature, rings: outerRings(feature.geometry).filter(ringIsVisible) }))
+    .filter((group) => group.rings.length)
+  const zoneRingCount = zoneGroups.reduce((total, group) => total + group.rings.length, 0)
+  const streetRingCount = streetGroups.reduce((total, group) => total + group.rings.length, 0)
+  const zonePointLimit = Math.max(4, Math.floor((streetRingCount ? 4000 : 6000) / Math.max(1, zoneRingCount)))
+  const streetPointLimit = Math.max(4, Math.floor((zoneRingCount ? 2000 : 6000) / Math.max(1, streetRingCount)))
+  const maxPolygons = 400
+  const fitRing = (ring: Position[], pointLimit: number) => {
+    const simplified = simplifyRing(ring, tolerance)
+    if (simplified.length <= pointLimit) return simplified
+    const closed = simplified[0][0] === simplified[simplified.length - 1][0]
+      && simplified[0][1] === simplified[simplified.length - 1][1]
+    const source = closed ? simplified.slice(0, -1) : simplified
+    const slots = Math.max(3, pointLimit - (closed ? 1 : 0))
+    const reduced = Array.from({ length: slots }, (_, index) => (
+      source[Math.round(index * (source.length - 1) / Math.max(1, slots - 1))]
+    ))
+    if (closed) reduced.push(reduced[0])
+    return reduced
+  }
+  const addRings = (
+    rings: Position[][],
+    pointLimit: number,
+    strokeColor: string,
+    fillColor: string,
+    strokeWidth: number,
+  ) => {
+    const renderedRings: Position[][] = []
+    rings.forEach((ring) => {
+      if (items.length >= maxPolygons) return
+      const simplified = fitRing(ring, pointLimit)
+      if (simplified.length < 3) return
+      renderedRings.push(simplified)
+      items.push({
+        points: simplified.map(([longitude, latitude]) => {
+          const coordinate = wgs84ToGcj02(latitude, longitude)
+          return {
+            latitude: Number(coordinate.latitude.toFixed(6)),
+            longitude: Number(coordinate.longitude.toFixed(6)),
+          }
+        }),
+        strokeColor,
+        fillColor,
+        strokeWidth,
+      })
+    })
+    return renderedRings
+  }
+  zoneGroups.forEach(({ feature, rings: sourceRings }) => {
+    const junior = feature.properties.level === 'junior'
+    const rings = addRings(
+      sourceRings,
+      zonePointLimit,
+      junior ? '#c93f77' : '#6d3fc9',
+      junior ? '#f8e4eb88' : '#eee9fa88',
+      2,
+    )
+    if (rings.length) empty.zoneHits.push({ feature, rings })
+  })
+  streetGroups.forEach(({ feature, rings: sourceRings }) => {
+    const rings = addRings(sourceRings, streetPointLimit, '#a85843aa', '#a8584308', 1)
+    if (rings.length) empty.streetHits.push({ feature, rings })
+  })
+  empty.overlays = items
+  return empty
+})
+const polygons = computed(() => polygonState.value.overlays)
+
+const clusterItems = computed(() => visibleMapItems.value.filter((item) => item.kind === 'cluster'))
 const markers = computed(() => clusterItems.value.map((item, index) => {
   const coordinate = wgs84ToGcj02(item.lat, item.lng)
   return {
@@ -78,9 +247,9 @@ const markers = computed(() => clusterItems.value.map((item, index) => {
   }
 }))
 
-function selectItem(item: MapItem) {
+function selectItem(item: MapSelection) {
   emit('select', item)
-  if (item.kind !== 'cluster') return
+  if (!('kind' in item) || item.kind !== 'cluster') return
   const focus = (zoom: number) => emit('focus', {
     latitude: item.lat,
     longitude: item.lng,
@@ -110,22 +279,73 @@ function mapTap(event: unknown) {
   if (!Number.isFinite(gcjLatitude) || !Number.isFinite(gcjLongitude)) return
   const { latitude, longitude } = gcj02ToWgs84(gcjLatitude, gcjLongitude)
   const system = uni.getSystemInfoSync()
-  const threshold = lastViewport
+  const threshold = lastViewport.value
     ? Math.max(
-        (lastViewport.east - lastViewport.west) / Math.max(320, system.windowWidth),
-        (lastViewport.north - lastViewport.south) / Math.max(480, system.windowHeight),
+        (lastViewport.value.east - lastViewport.value.west) / Math.max(320, system.windowWidth),
+        (lastViewport.value.north - lastViewport.value.south) / Math.max(480, system.windowHeight),
       ) * 24
     : 0.04 / Math.pow(2, props.zoom - 10)
-  let nearest: MapItem | null = null
-  let nearestDistance = Number.POSITIVE_INFINITY
-  props.items.forEach((item) => {
+  let nearestSchool: SchoolFeature | null = null
+  let nearestSchoolDistance = Number.POSITIVE_INFINITY
+  visibleSchools.value.forEach((school) => {
+      const [schoolLongitude, schoolLatitude] = school.geometry.coordinates
+      const distance = Math.hypot(schoolLatitude - latitude, schoolLongitude - longitude)
+      if (distance < nearestSchoolDistance) {
+        nearestSchool = school
+        nearestSchoolDistance = distance
+      }
+  })
+  if (nearestSchool && nearestSchoolDistance <= Math.max(threshold, 0.0018)) {
+    selectItem(nearestSchool)
+    return
+  }
+  let nearestItem: MapItem | null = null
+  let nearestItemDistance = Number.POSITIVE_INFINITY
+  visibleMapItems.value.forEach((item) => {
     const distance = Math.hypot(item.lat - latitude, item.lng - longitude)
-    if (distance < nearestDistance) {
-      nearest = item
-      nearestDistance = distance
+    if (distance < nearestItemDistance) {
+      nearestItem = item
+      nearestItemDistance = distance
     }
   })
-  if (nearest && nearestDistance <= threshold) selectItem(nearest)
+  if (nearestItem && nearestItemDistance <= threshold) {
+    selectItem(nearestItem)
+    return
+  }
+  if (polygonState.value.zoneHits.length) {
+    const schools = getCachedSchools()
+    const zones = polygonState.value.zoneHits
+      .filter(({ rings }) => (
+        rings.some((ring) => pointInRing(longitude, latitude, ring))
+      ))
+      .map(({ feature: zone }) => {
+        const school = schools?.features.find((item) => item.properties.id === zone.properties.schoolId)
+        const bounds = geometryBounds(zone.geometry)
+        const zoneLongitude = school?.geometry.coordinates[0] ?? ((bounds?.west ?? longitude) + (bounds?.east ?? longitude)) / 2
+        const zoneLatitude = school?.geometry.coordinates[1] ?? ((bounds?.south ?? latitude) + (bounds?.north ?? latitude)) / 2
+        return { zone, school, distance: Math.hypot(zoneLatitude - latitude, zoneLongitude - longitude) }
+      })
+      .sort((left, right) => left.distance - right.distance)
+    if (zones[0]) {
+      selectItem(zones[0].school ?? zones[0].zone)
+      return
+    }
+  }
+  if (polygonState.value.streetHits.length && mapContext) {
+    const street = polygonState.value.streetHits.find(({ rings }) => (
+      rings.some((ring) => pointInRing(longitude, latitude, ring))
+    ))
+    if (!street) return
+    const bounds = geometryBounds(street.feature.geometry)
+    if (!bounds) return
+    mapContext.includePoints({
+      points: [
+        wgs84ToGcj02(bounds.south, bounds.west),
+        wgs84ToGcj02(bounds.north, bounds.east),
+      ],
+      padding: [40, 40, 130, 40],
+    })
+  }
 }
 
 function emitRegion(region: UniNamespace.MapContextGetRegionResult, scale: number) {
@@ -140,7 +360,7 @@ function emitRegion(region: UniNamespace.MapContextGetRegionResult, scale: numbe
     (region.southwest.latitude + region.northeast.latitude) / 2,
     (region.southwest.longitude + region.northeast.longitude) / 2,
   )
-  lastViewport = {
+  lastViewport.value = {
     west: Math.min(...corners.map((item) => item.longitude)),
     south: Math.min(...corners.map((item) => item.latitude)),
     east: Math.max(...corners.map((item) => item.longitude)),
@@ -149,7 +369,7 @@ function emitRegion(region: UniNamespace.MapContextGetRegionResult, scale: numbe
     latitude: center.latitude,
     longitude: center.longitude,
   }
-  emit('viewport-change', lastViewport)
+  emit('viewport-change', lastViewport.value)
 }
 
 function readViewport() {
@@ -225,6 +445,7 @@ onBeforeUnmount(() => {
     :scale="zoom"
     :circles="circles"
     :markers="markers"
+    :polygons="polygons"
     enable-zoom
     enable-scroll
     @markertap="markerTap"

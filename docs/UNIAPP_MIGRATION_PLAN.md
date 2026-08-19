@@ -75,9 +75,11 @@ H5 输出到 `uniapp/dist/build/h5/`；微信小程序输出到 `uniapp/dist/bui
 - H5 已接入 Leaflet、OpenStreetMap、真实 bbox/zoom、六档价格点、服务端聚合和点选。
 - 微信已接入原生 map 的 circles、聚合数量 marker、regionchange、MapContext 视口读取、最近点命中及 WGS84/GCJ-02 成对转换。
 - 两端共用当前视口筛选、请求防乱序、结果定位、聚合放大和地图外简略卡。
+- 街道、学校和学区由页面按需加载并缓存；H5 使用 GeoJSON/marker，微信使用 polygons/circles。
+- 微信只下发当前视口覆盖物：circle 总数不超过 980，polygon 不超过 400、简化后总点数不超过 6000；绘制和命中共用同一简化 ring。
 - H5、`mp-weixin` 构建和类型检查通过；微信真机交互尚未验收。
 
-街道边界、学校和学区仍属于阶段 3 的后续工作，不在地图组件内重复实现业务请求。
+阶段 3 的地图图层代码迁移已完成，仍需在 H5 浏览器、微信开发者工具和真机逐项验收。
 
 ## 约束
 

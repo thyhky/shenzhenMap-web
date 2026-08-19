@@ -56,6 +56,102 @@ export interface ClusterMapItem {
 
 export type MapItem = EstateMapItem | ClusterMapItem
 
+export type Position = [number, number]
+
+export interface PolygonGeometry {
+  type: 'Polygon'
+  coordinates: Position[][]
+}
+
+export interface MultiPolygonGeometry {
+  type: 'MultiPolygon'
+  coordinates: Position[][][]
+}
+
+export type AreaGeometry = PolygonGeometry | MultiPolygonGeometry
+
+export interface StreetFeature {
+  type: 'Feature'
+  properties: {
+    name: string
+    district: string
+    estates: number
+    priced: number
+    avgPrice: number | null
+  }
+  geometry: AreaGeometry
+}
+
+export interface StreetFeatureCollection {
+  type: 'FeatureCollection'
+  scope: 'streets'
+  features: StreetFeature[]
+}
+
+export interface SchoolSupplement {
+  id: number
+  name: string | null
+  level: string | null
+  established: string | null
+  admissionScores: string | null
+  nearbyEstates: string[]
+}
+
+export interface SchoolFeature {
+  type: 'Feature'
+  properties: {
+    id: string
+    name: string
+    level: 'primary' | 'junior'
+    levelLabel: string
+    district: string
+    groupName: string | null
+    address: string
+    zoneText: string
+    zones: string[]
+    phones: string[]
+    sourceUrl: string
+    sourceYear: number
+    sourcePublished: string
+    lockYears: number | null
+    holdYearsAdvised: number | null
+    degreePolicyNote: string | null
+    leyoujia: SchoolSupplement | null
+  }
+  geometry: {
+    type: 'Point'
+    coordinates: Position
+  }
+}
+
+export interface SchoolFeatureCollection {
+  type: 'FeatureCollection'
+  scope: 'school-scopes'
+  features: SchoolFeature[]
+}
+
+export interface SchoolZoneFeature {
+  type: 'Feature'
+  properties: {
+    schoolId: string
+    name: string
+    level: 'primary' | 'junior'
+    levelLabel: string
+    district: string
+    zones: string[]
+    method: string
+  }
+  geometry: AreaGeometry
+}
+
+export interface SchoolZoneFeatureCollection {
+  type: 'FeatureCollection'
+  scope: 'school-scopes'
+  features: SchoolZoneFeature[]
+}
+
+export type MapSelection = MapItem | SchoolFeature | SchoolZoneFeature
+
 export interface MapResponse {
   scope: 'estates'
   mode: 'clusters' | 'estates'
@@ -85,5 +181,7 @@ export interface MapViewport extends Viewport {
   latitude: number
   longitude: number
 }
+
+export type MapLayerName = 'boundaries' | 'schools' | 'zones'
 
 export type SheetName = 'filters' | 'results' | 'detail' | ''

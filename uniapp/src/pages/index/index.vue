@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import AppHeader from '@/components/AppHeader.vue'
 import BottomNav from '@/components/BottomNav.vue'
 import BottomSheet from '@/components/BottomSheet.vue'
 import DetailSheet from '@/components/DetailSheet.vue'
 import FilterSheet from '@/components/FilterSheet.vue'
+import LayerControl from '@/components/LayerControl.vue'
 import MapBriefCard from '@/components/MapBriefCard.vue'
 import ResultsSheet from '@/components/ResultsSheet.vue'
 // #ifdef H5
@@ -14,9 +15,21 @@ import MapH5 from '@/components/map/MapH5.vue'
 // #ifdef MP-WEIXIN
 import MapWeixin from '@/components/map/MapWeixin.vue'
 // #endif
-import { getMapData, getMeta } from '@/services/api'
+import { getMapData, getMeta, getSchools, getSchoolZones, getStreetBoundaries } from '@/services/api'
 import { useEstateFilters } from '@/stores/filters'
-import type { EstateSummary, MapItem, MapResponse, MapViewport, MetaResponse, SheetName, Viewport } from '@/domain/types'
+import type {
+  EstateSummary,
+  MapLayerName,
+  MapResponse,
+  MapSelection,
+  MapViewport,
+  MetaResponse,
+  SchoolFeatureCollection,
+  SchoolZoneFeatureCollection,
+  SheetName,
+  StreetFeatureCollection,
+  Viewport,
+} from '@/domain/types'
 
 const initialViewport: Viewport = {
   west: 113.7,
@@ -28,13 +41,19 @@ const initialViewport: Viewport = {
 
 const meta = ref<MetaResponse | null>(null)
 const snapshot = ref<MapResponse | null>(null)
-const selected = ref<MapItem | null>(null)
+const boundaries = ref<StreetFeatureCollection | null>(null)
+const schools = ref<SchoolFeatureCollection | null>(null)
+const schoolZones = ref<SchoolZoneFeatureCollection | null>(null)
+const selected = ref<MapSelection | null>(null)
 const activeSheet = ref<SheetName>('')
 const loading = ref(true)
 const error = ref('')
 const viewport = ref<Viewport>({ ...initialViewport })
 const mapCenter = ref({ latitude: 22.6508, longitude: 114.0745 })
 const mapZoom = ref(initialViewport.zoom)
+const layerRevision = ref(0)
+const visibleLayers = reactive<Record<MapLayerName, boolean>>({ boundaries: false, schools: false, zones: false })
+const layerLoading = reactive<Record<MapLayerName, boolean>>({ boundaries: false, schools: false, zones: false })
 const { draft, applied, updateDraft, applyDraft, resetDraft } = useEstateFilters()
 let mapRequestId = 0
 let lastMapRequestKey = ''
@@ -48,7 +67,10 @@ const sheetTitle = computed(() => (
 ))
 const selectedName = computed(() => {
   if (!selected.value) return ''
-  return selected.value.kind === 'cluster' ? `${selected.value.count} 个小区` : selected.value.name
+  if ('kind' in selected.value) {
+    return selected.value.kind === 'cluster' ? `${selected.value.count} 个小区` : selected.value.name
+  }
+  return selected.value.properties.name
 })
 
 function toggleSheet(sheet: Exclude<SheetName, ''>) {
@@ -92,7 +114,7 @@ function selectEstate(estate: EstateSummary) {
   activeSheet.value = ''
 }
 
-function selectMapItem(item: MapItem) {
+function selectMapItem(item: MapSelection) {
   selected.value = item
   activeSheet.value = ''
 }
@@ -113,6 +135,31 @@ function updateViewport(next: MapViewport) {
   mapCenter.value = { latitude: next.latitude, longitude: next.longitude }
   mapZoom.value = next.zoom
   void loadMap()
+}
+
+async function toggleLayer(layer: MapLayerName) {
+  visibleLayers[layer] = !visibleLayers[layer]
+  if (!visibleLayers[layer] || layerLoading[layer]) return
+  if ((layer === 'boundaries' && boundaries.value)
+    || (layer === 'schools' && schools.value)
+    || (layer === 'zones' && schoolZones.value)) return
+  layerLoading[layer] = true
+  error.value = ''
+  try {
+    if (layer === 'boundaries') boundaries.value = await getStreetBoundaries()
+    if (layer === 'schools') schools.value = await getSchools()
+    if (layer === 'zones') {
+      const [zones, schoolData] = await Promise.all([getSchoolZones(), getSchools()])
+      schoolZones.value = zones
+      schools.value ??= schoolData
+    }
+    layerRevision.value += 1
+  } catch (cause) {
+    visibleLayers[layer] = false
+    error.value = cause instanceof Error ? cause.message : '地图图层加载失败'
+  } finally {
+    layerLoading[layer] = false
+  }
 }
 
 onLoad(async () => {
@@ -139,6 +186,12 @@ onLoad(async () => {
       :longitude="mapCenter.longitude"
       :zoom="mapZoom"
       :items="snapshot?.items ?? []"
+      :boundaries="boundaries"
+      :schools="schools"
+      :school-zones="schoolZones"
+      :show-boundaries="visibleLayers.boundaries"
+      :show-schools="visibleLayers.schools"
+      :show-school-zones="visibleLayers.zones"
       @select="selectMapItem"
       @viewport-change="updateViewport"
     />
@@ -150,6 +203,10 @@ onLoad(async () => {
       :longitude="mapCenter.longitude"
       :zoom="mapZoom"
       :items="snapshot?.items ?? []"
+      :layer-revision="layerRevision"
+      :show-boundaries="visibleLayers.boundaries"
+      :show-schools="visibleLayers.schools"
+      :show-school-zones="visibleLayers.zones"
       @select="selectMapItem"
       @focus="focusMap"
       @viewport-change="updateViewport"
@@ -157,6 +214,14 @@ onLoad(async () => {
     <!-- #endif -->
 
     <view v-if="error" class="error-toast">{{ error }}</view>
+
+    <LayerControl
+      :boundaries="visibleLayers.boundaries"
+      :schools="visibleLayers.schools"
+      :zones="visibleLayers.zones"
+      :loading="layerLoading"
+      @toggle="toggleLayer"
+    />
 
     <MapBriefCard
       v-if="selected && !activeSheet"

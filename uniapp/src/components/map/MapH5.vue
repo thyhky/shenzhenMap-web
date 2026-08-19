@@ -2,23 +2,41 @@
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { MapItem, MapViewport } from '@/domain/types'
+import type {
+  MapItem,
+  MapSelection,
+  MapViewport,
+  SchoolFeatureCollection,
+  SchoolZoneFeature,
+  SchoolZoneFeatureCollection,
+  StreetFeature,
+  StreetFeatureCollection,
+} from '@/domain/types'
 
 const props = defineProps<{
   latitude: number
   longitude: number
   zoom: number
   items: MapItem[]
+  boundaries: StreetFeatureCollection | null
+  schools: SchoolFeatureCollection | null
+  schoolZones: SchoolZoneFeatureCollection | null
+  showBoundaries: boolean
+  showSchools: boolean
+  showSchoolZones: boolean
 }>()
 
 const emit = defineEmits<{
-  select: [item: MapItem]
+  select: [item: MapSelection]
   'viewport-change': [viewport: MapViewport]
 }>()
 
 const mapRoot = ref<HTMLElement | null>(null)
 let map: L.Map | null = null
 let pointsLayer: L.LayerGroup | null = null
+let boundaryLayer: L.GeoJSON | null = null
+let schoolLayer: L.LayerGroup | null = null
+let schoolZoneLayer: L.GeoJSON | null = null
 let viewportTimer: ReturnType<typeof setTimeout> | null = null
 let resizeObserver: ResizeObserver | null = null
 
@@ -106,6 +124,62 @@ function drawPoints() {
   })
 }
 
+function drawBoundaries() {
+  if (!boundaryLayer) return
+  boundaryLayer.clearLayers()
+  if (props.showBoundaries && props.boundaries) {
+    boundaryLayer.addData(props.boundaries as unknown as GeoJSON.FeatureCollection)
+  }
+}
+
+function schoolIcon(level: 'primary' | 'junior') {
+  return L.divIcon({
+    className: 'uni-school-marker-wrap',
+    html: `<span class="uni-school-marker uni-school-marker--${level}"></span>`,
+    iconSize: [18, 26],
+    iconAnchor: [9, 25],
+    popupAnchor: [0, -24],
+    tooltipAnchor: [0, -18],
+  })
+}
+
+function drawSchools() {
+  if (!map || !schoolLayer) return
+  const currentMap = map
+  const targetLayer = schoolLayer
+  targetLayer.clearLayers()
+  if (!props.showSchools || !props.schools) return
+  props.schools.features.forEach((school) => {
+    const [longitude, latitude] = school.geometry.coordinates
+    const marker = L.marker([latitude, longitude], {
+      icon: schoolIcon(school.properties.level),
+      riseOnHover: true,
+    })
+    marker.bindPopup(popupContent(school.properties.name, [
+      `${school.properties.levelLabel} · ${school.properties.district}`,
+      `官方招生社区 ${school.properties.zones.length} 个`,
+      '点击查看招生范围与咨询电话',
+    ]))
+    marker.on('click', () => emit('select', school))
+    if (currentMap.getZoom() >= 15) {
+      marker.bindTooltip(school.properties.name, {
+        direction: 'top',
+        offset: [0, -20],
+        className: 'uni-school-label',
+      })
+    }
+    marker.addTo(targetLayer)
+  })
+}
+
+function drawSchoolZones() {
+  if (!schoolZoneLayer) return
+  schoolZoneLayer.clearLayers()
+  if (props.showSchoolZones && props.schoolZones) {
+    schoolZoneLayer.addData(props.schoolZones as unknown as GeoJSON.FeatureCollection)
+  }
+}
+
 function emitViewport() {
   if (!map) return
   const bounds = map.getBounds()
@@ -127,6 +201,9 @@ function scheduleViewport() {
 }
 
 watch(() => props.items, drawPoints)
+watch([() => props.boundaries, () => props.showBoundaries], drawBoundaries)
+watch([() => props.schools, () => props.showSchools], drawSchools)
+watch([() => props.schoolZones, () => props.showSchoolZones], drawSchoolZones)
 watch(
   () => [props.latitude, props.longitude, props.zoom] as const,
   ([latitude, longitude, zoom]) => {
@@ -153,16 +230,69 @@ onMounted(async () => {
     maxZoom: 18,
     attribution: '&copy; OpenStreetMap contributors',
   }).addTo(map)
+  map.createPane('streetBoundaries').style.zIndex = '410'
+  map.createPane('schoolZones').style.zIndex = '420'
   map.createPane('estatePoints').style.zIndex = '450'
+  boundaryLayer = L.geoJSON(undefined, {
+    pane: 'streetBoundaries',
+    style: {
+      color: '#a85843',
+      weight: 1,
+      opacity: 0.66,
+      fillOpacity: 0.015,
+    },
+    onEachFeature: (feature, layer) => {
+      const street = feature as unknown as StreetFeature
+      const details = street.properties
+      layer.bindTooltip(popupContent(details.name, [
+        details.district,
+        `${details.estates} 个小区 · ${details.priced} 个有价`,
+        `均价 ${priceText(details.avgPrice)}`,
+      ]), { sticky: true, className: 'uni-boundary-label' })
+      layer.on('click', () => {
+        if (details.estates && map && 'getBounds' in layer) {
+          map.fitBounds((layer as L.Polygon).getBounds(), { padding: [40, 40] })
+        }
+      })
+    },
+  }).addTo(map)
+  schoolZoneLayer = L.geoJSON(undefined, {
+    pane: 'schoolZones',
+    style: (feature) => ({
+      color: (feature as unknown as SchoolZoneFeature).properties.level === 'junior' ? '#c93f77' : '#6d3fc9',
+      weight: 1.5,
+      opacity: 0.75,
+      fillOpacity: 0.18,
+    }),
+    onEachFeature: (feature, layer) => {
+      const zone = feature as unknown as SchoolZoneFeature
+      const details = zone.properties
+      layer.bindPopup(popupContent(details.name, [
+        `${details.levelLabel} · ${details.district}`,
+        `覆盖 ${details.zones.length} 个招生社区`,
+        details.method === 'official-boundary' ? '官方划片边界' : '基于招生社区名称的近似范围',
+      ]))
+      layer.bindTooltip(details.name, { sticky: true, className: 'uni-school-label' })
+      layer.on('click', () => {
+        const school = props.schools?.features.find((item) => item.properties.id === details.schoolId)
+        emit('select', school ?? zone)
+      })
+    },
+  }).addTo(map)
   pointsLayer = L.layerGroup().addTo(map)
+  schoolLayer = L.layerGroup().addTo(map)
   map.on('moveend', scheduleViewport)
   map.on('zoomend', () => {
     drawPoints()
+    drawSchools()
     scheduleViewport()
   })
   resizeObserver = new ResizeObserver(() => map?.invalidateSize({ pan: false }))
   resizeObserver.observe(mapRoot.value)
   drawPoints()
+  drawBoundaries()
+  drawSchools()
+  drawSchoolZones()
   emitViewport()
 })
 
@@ -171,6 +301,10 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   map?.remove()
   map = null
+  pointsLayer = null
+  boundaryLayer = null
+  schoolLayer = null
+  schoolZoneLayer = null
 })
 </script>
 
@@ -191,4 +325,12 @@ onBeforeUnmount(() => {
 .uni-estate-label::before { display: none; }
 .uni-cluster-count { border: 0 !important; background: transparent !important; color: #fff !important; box-shadow: none !important; font: 700 10px/1 Consolas, monospace !important; text-shadow: 0 1px 2px rgba(16, 43, 46, 0.45); pointer-events: none !important; }
 .uni-cluster-count::before { display: none !important; }
+.uni-boundary-label { border: 1px solid rgba(168, 88, 67, 0.35) !important; border-radius: 5px !important; background: rgba(253, 249, 240, 0.94) !important; box-shadow: none !important; }
+.uni-school-label { border: 1px solid rgba(90, 60, 160, 0.45) !important; border-radius: 5px !important; background: rgba(249, 246, 255, 0.95) !important; color: #3c2f6e !important; box-shadow: none !important; font-size: 10px !important; }
+.uni-school-label::before { display: none; }
+.uni-school-marker-wrap { border: 0; background: transparent; }
+.uni-school-marker { position: relative; display: block; width: 18px; height: 18px; border: 2px solid #fff; border-radius: 50% 50% 50% 0; box-shadow: 0 2px 6px rgba(24, 43, 47, 0.35); transform: rotate(-45deg); }
+.uni-school-marker::after { position: absolute; inset: 4px; border-radius: 50%; background: rgba(255, 255, 255, 0.92); content: ''; }
+.uni-school-marker--primary { background: #6d3fc9; }
+.uni-school-marker--junior { background: #c93f77; }
 </style>
