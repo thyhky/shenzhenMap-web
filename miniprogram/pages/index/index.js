@@ -630,7 +630,7 @@ Page({
         latitude: marker.item.lat,
         longitude: marker.item.lng,
         scale: Math.min(16, this.data.scale + 2),
-        activeSheet: 'detail',
+        activeSheet: '',
         selected: {
           ...marker.item,
           name: `${marker.item.count} 个小区`,
@@ -646,7 +646,7 @@ Page({
       })
       return
     }
-    this.setData({ activeSheet: 'detail', selected: { ...marker.item, priceText: priceText(marker.item.price), refPriceText: '', refGapText: '', historyRows: [], historyTrendText: '', historyTruncated: false } })
+    this.setData({ activeSheet: '', selected: { ...marker.item, priceText: priceText(marker.item.price), refPriceText: '', refGapText: '', historyRows: [], historyTrendText: '', historyTruncated: false } })
   },
 
   handleMapTap(event) {
@@ -656,7 +656,7 @@ Page({
       if (zone?.zone) {
         const linkedSchool = this.schoolById?.[zone.zone.schoolId]
         this.setData({
-          activeSheet: 'detail',
+          activeSheet: '',
           selected: {
             ...schoolDetailText(linkedSchool || zone.zone),
             type: 'school-zone',
@@ -696,7 +696,7 @@ Page({
     })
     if (!nearest || nearestDistance > threshold) return
     if (nearest.kind === 'school') {
-      this.setData({ activeSheet: 'detail', selected: { ...schoolDetailText(nearest.item), type: 'school', priceText: '', refPriceText: '', refGapText: '', historyRows: [], historyTrendText: '', historyTruncated: false }, selectedLoading: false })
+      this.setData({ activeSheet: '', selected: { ...schoolDetailText(nearest.item), type: 'school', priceText: '', refPriceText: '', refGapText: '', historyRows: [], historyTrendText: '', historyTruncated: false }, selectedLoading: false })
       return
     }
     const item = nearest.item
@@ -705,7 +705,7 @@ Page({
         latitude: item.lat,
         longitude: item.lng,
         scale: Math.min(16, this.data.scale + 2),
-        activeSheet: 'detail',
+        activeSheet: '',
         selected: {
           ...item,
           type: 'cluster',
@@ -855,7 +855,7 @@ Page({
   },
 
   async selectEstate(id) {
-    this.setData({ selectedLoading: true, activeSheet: 'detail' })
+    this.setData({ selectedLoading: true, activeSheet: '' })
     try {
       const [detail, history] = await Promise.all([
         request(`/api/estates/${id}`),
@@ -931,7 +931,7 @@ Page({
   handleSchoolTap(event) {
     const index = event.currentTarget.dataset.index
     const school = this.data.schoolCircles?.[index]?.school
-    if (school) this.setData({ activeSheet: 'detail', selected: { ...schoolDetailText(school), type: 'school', priceText: '', refPriceText: '', refGapText: '', historyRows: [], historyTrendText: '', historyTruncated: false } })
+    if (school) this.setData({ activeSheet: '', selected: { ...schoolDetailText(school), type: 'school', priceText: '', refGapText: '', refPriceText: '', historyRows: [], historyTrendText: '', historyTruncated: false } })
   },
 
   clearSelected() {

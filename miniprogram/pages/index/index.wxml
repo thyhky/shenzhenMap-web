@@ -132,6 +132,20 @@
     <view class="nav-item {{activeSheet === 'detail' ? 'active' : ''}}" bindtap="toggleDetail"><text>详情</text><text class="nav-meta">{{selected ? selected.name : '未选择'}}</text></view>
   </view>
 
+  <view wx:if="{{selected && !activeSheet}}" class="map-brief">
+    <view class="brief-copy">
+      <text class="brief-name">{{selected.name}}</text>
+      <text wx:if="{{selected.priceText}}" class="brief-meta">{{selected.priceText}}/㎡{{selected.rentYieldText ? ' · 租售比 ' + selected.rentYieldText : ''}}</text>
+      <text wx:elif="{{selected.levelLabel}}" class="brief-meta">{{selected.district}} · {{selected.levelLabel}}</text>
+      <text wx:elif="{{selected.type === 'cluster'}}" class="brief-meta">点击放大或查看详情</text>
+      <text wx:if="{{selectedLoading}}" class="brief-meta">正在加载详情…</text>
+    </view>
+    <view class="brief-actions">
+      <text bindtap="toggleDetail">查看详情 ›</text>
+      <text class="brief-close" bindtap="clearSelected">×</text>
+    </view>
+  </view>
+
   <view wx:if="{{loading}}" class="loading-mask">正在加载地图…</view>
   <view wx:if="{{error}}" class="error-card">
     <text>{{error}}</text>

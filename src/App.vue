@@ -217,8 +217,6 @@ async function handleMapSelect(value: EstateDetail) {
   selectedEstate.value = value
   selectedSchool.value = null
   priceHistory.value = null
-  rightPanelTab.value = 'detail'
-  if (window.matchMedia('(max-width: 900px)').matches) mobileSheet.value = 'detail'
   await loadPriceHistory(value.id)
 }
 
@@ -234,12 +232,10 @@ function handleSchoolSelect(value: SchoolFeature) {
   priceHistory.value = null
   selectedEstate.value = null
   selectedSchool.value = value
-  rightPanelTab.value = 'detail'
-  if (window.matchMedia('(max-width: 900px)').matches) mobileSheet.value = 'detail'
 }
 
 function selectResult(value: EstateSummary) {
-  rightPanelTab.value = 'detail'
+  if (window.matchMedia('(max-width: 900px)').matches) mobileSheet.value = null
   mapView.value?.focusEstate(value)
 }
 
