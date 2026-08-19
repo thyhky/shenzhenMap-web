@@ -81,4 +81,9 @@ export interface Viewport {
   zoom: number
 }
 
+export interface MapViewport extends Viewport {
+  latitude: number
+  longitude: number
+}
+
 export type SheetName = 'filters' | 'results' | 'detail' | ''

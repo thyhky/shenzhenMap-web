@@ -1,17 +1,23 @@
 <script setup lang="ts">
-import type { EstateSummary } from '@/domain/types'
+import type { MapItem } from '@/domain/types'
 
-defineProps<{ estate: EstateSummary | null }>()
+defineProps<{ item: MapItem | null }>()
 </script>
 
 <template>
-  <view v-if="estate" class="detail-sheet">
-    <text class="name">{{ estate.name }}</text>
-    <text>{{ estate.district }} · {{ estate.street }}</text>
-    <text class="price">{{ estate.price ? `${(estate.price / 10000).toFixed(1)}万/㎡` : '暂无价格' }}</text>
-    <text>租售比：{{ estate.rentYield === null ? '暂无' : `${estate.rentYield.toFixed(2)}%` }}</text>
-    <text>官方参考价：{{ estate.refPrice ? `${(estate.refPrice / 10000).toFixed(1)}万/㎡` : '暂无' }}</text>
+  <view v-if="item?.kind === 'estate'" class="detail-sheet">
+    <text class="name">{{ item.name }}</text>
+    <text>{{ item.district }} · {{ item.street }}</text>
+    <text class="price">{{ item.price ? `${(item.price / 10000).toFixed(1)}万/㎡` : '暂无价格' }}</text>
+    <text>租售比：{{ item.rentYield === null ? '暂无' : `${item.rentYield.toFixed(2)}%` }}</text>
+    <text>官方参考价：{{ item.refPrice ? `${(item.refPrice / 10000).toFixed(1)}万/㎡` : '暂无' }}</text>
     <text class="note">完整学校、价格历史和数据来源将在详情迁移阶段接入。</text>
+  </view>
+  <view v-else-if="item" class="detail-sheet">
+    <text class="name">{{ item.count }} 个小区</text>
+    <text>{{ item.pricedCount }} 个有有效价格</text>
+    <text class="price">均价 {{ item.avgPrice ? `${(item.avgPrice / 10000).toFixed(1)}万/㎡` : '暂无' }}</text>
+    <text class="note">聚合范围已放大，请继续选择具体小区查看详情。</text>
   </view>
   <view v-else class="empty">点击地图或结果列表选择一个小区</view>
 </template>

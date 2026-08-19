@@ -6,6 +6,7 @@ import BottomNav from '@/components/BottomNav.vue'
 import BottomSheet from '@/components/BottomSheet.vue'
 import DetailSheet from '@/components/DetailSheet.vue'
 import FilterSheet from '@/components/FilterSheet.vue'
+import MapBriefCard from '@/components/MapBriefCard.vue'
 import ResultsSheet from '@/components/ResultsSheet.vue'
 // #ifdef H5
 import MapH5 from '@/components/map/MapH5.vue'
@@ -15,7 +16,7 @@ import MapWeixin from '@/components/map/MapWeixin.vue'
 // #endif
 import { getMapData, getMeta } from '@/services/api'
 import { useEstateFilters } from '@/stores/filters'
-import type { EstateSummary, MapItem, MapResponse, MetaResponse, SheetName, Viewport } from '@/domain/types'
+import type { EstateSummary, MapItem, MapResponse, MapViewport, MetaResponse, SheetName, Viewport } from '@/domain/types'
 
 const initialViewport: Viewport = {
   west: 113.7,
@@ -27,12 +28,16 @@ const initialViewport: Viewport = {
 
 const meta = ref<MetaResponse | null>(null)
 const snapshot = ref<MapResponse | null>(null)
-const selected = ref<EstateSummary | null>(null)
+const selected = ref<MapItem | null>(null)
 const activeSheet = ref<SheetName>('')
 const loading = ref(true)
 const error = ref('')
 const viewport = ref<Viewport>({ ...initialViewport })
+const mapCenter = ref({ latitude: 22.6508, longitude: 114.0745 })
+const mapZoom = ref(initialViewport.zoom)
 const { draft, applied, updateDraft, applyDraft, resetDraft } = useEstateFilters()
+let mapRequestId = 0
+let lastMapRequestKey = ''
 
 const sheetTitle = computed(() => (
   activeSheet.value === 'filters'
@@ -41,20 +46,36 @@ const sheetTitle = computed(() => (
       ? '范围结果'
       : '小区详情'
 ))
+const selectedName = computed(() => {
+  if (!selected.value) return ''
+  return selected.value.kind === 'cluster' ? `${selected.value.count} 个小区` : selected.value.name
+})
 
 function toggleSheet(sheet: Exclude<SheetName, ''>) {
   activeSheet.value = activeSheet.value === sheet ? '' : sheet
 }
 
 async function loadMap() {
+  const requestViewport = { ...viewport.value }
+  const requestKey = JSON.stringify({
+    viewport: Object.fromEntries(Object.entries(requestViewport).map(([key, value]) => [key, Number(value.toFixed(6))])),
+    filters: applied,
+  })
+  if (requestKey === lastMapRequestKey) return
+  lastMapRequestKey = requestKey
+  const requestId = ++mapRequestId
   loading.value = true
   error.value = ''
   try {
-    snapshot.value = await getMapData(viewport.value, applied)
+    const response = await getMapData(requestViewport, applied)
+    if (requestId === mapRequestId) snapshot.value = response
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '地图数据加载失败'
+    if (requestId === mapRequestId) {
+      lastMapRequestKey = ''
+      error.value = cause instanceof Error ? cause.message : '地图数据加载失败'
+    }
   } finally {
-    loading.value = false
+    if (requestId === mapRequestId) loading.value = false
   }
 }
 
@@ -65,12 +86,33 @@ function applyFilters() {
 }
 
 function selectEstate(estate: EstateSummary) {
-  selected.value = estate
+  selected.value = { ...estate, kind: 'estate' }
+  mapCenter.value = { latitude: estate.lat, longitude: estate.lng }
+  mapZoom.value = Math.max(15, mapZoom.value)
   activeSheet.value = ''
 }
 
 function selectMapItem(item: MapItem) {
-  if (item.kind === 'estate') selectEstate(item)
+  selected.value = item
+  activeSheet.value = ''
+}
+
+function focusMap(view: { latitude: number; longitude: number; zoom: number }) {
+  mapCenter.value = { latitude: view.latitude, longitude: view.longitude }
+  mapZoom.value = view.zoom
+}
+
+function updateViewport(next: MapViewport) {
+  viewport.value = {
+    west: next.west,
+    south: next.south,
+    east: next.east,
+    north: next.north,
+    zoom: next.zoom,
+  }
+  mapCenter.value = { latitude: next.latitude, longitude: next.longitude }
+  mapZoom.value = next.zoom
+  void loadMap()
 }
 
 onLoad(async () => {
@@ -93,30 +135,41 @@ onLoad(async () => {
 
     <!-- #ifdef H5 -->
     <MapH5
-      :latitude="22.6508"
-      :longitude="114.0745"
-      :zoom="viewport.zoom"
+      :latitude="mapCenter.latitude"
+      :longitude="mapCenter.longitude"
+      :zoom="mapZoom"
       :items="snapshot?.items ?? []"
+      @select="selectMapItem"
+      @viewport-change="updateViewport"
     />
     <!-- #endif -->
 
     <!-- #ifdef MP-WEIXIN -->
     <MapWeixin
-      :latitude="22.6508"
-      :longitude="114.0745"
-      :zoom="viewport.zoom"
+      :latitude="mapCenter.latitude"
+      :longitude="mapCenter.longitude"
+      :zoom="mapZoom"
       :items="snapshot?.items ?? []"
       @select="selectMapItem"
+      @focus="focusMap"
+      @viewport-change="updateViewport"
     />
     <!-- #endif -->
 
     <view v-if="error" class="error-toast">{{ error }}</view>
 
+    <MapBriefCard
+      v-if="selected && !activeSheet"
+      :item="selected"
+      @close="selected = null"
+      @details="activeSheet = 'detail'"
+    />
+
     <BottomNav
       :active="activeSheet"
       :district="applied.district"
       :total="snapshot?.stats.total ?? 0"
-      :selected-name="selected?.name ?? ''"
+      :selected-name="selectedName"
       @select="toggleSheet"
     />
 
@@ -137,7 +190,7 @@ onLoad(async () => {
         :loading="loading"
         @select="selectEstate"
       />
-      <DetailSheet v-else :estate="selected" />
+      <DetailSheet v-else :item="selected" />
     </BottomSheet>
   </view>
 </template>
