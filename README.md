@@ -86,6 +86,19 @@ npm run db:setup:local
 
 当前不需要业务域名，因为页面不使用 `web-view`。详细步骤见 [`miniprogram/README.md`](./miniprogram/README.md)。不应提交真实 AppID 或密钥。
 
+## uni-app 迁移工程
+
+`uniapp/` 是新的 Vue 3 + TypeScript 跨端客户端，迁移期间与现有 Web、原生小程序并行维护。当前第一阶段已建立共享类型、API、筛选状态、移动底栏/抽屉骨架及 H5/微信地图适配接口，并可同时构建：
+
+```bash
+npm --prefix uniapp install
+npm run uni:typecheck
+npm run uni:build:h5
+npm run uni:build:mp-weixin
+```
+
+微信构建结果位于 `uniapp/dist/build/mp-weixin/`。完整计划与逐项验收状态见 [`docs/UNIAPP_MIGRATION_PLAN.md`](./docs/UNIAPP_MIGRATION_PLAN.md) 和 [`docs/UNIAPP_FEATURE_MATRIX.md`](./docs/UNIAPP_FEATURE_MATRIX.md)。在功能矩阵全部验收前，不替换当前生产客户端。
+
 ## 数据来源
 
 数据快照存放在 `./data/`，由 `npm run sync:data` 从独立的私有数据车间同步。默认来源是 `C:\code\Codex\fetch_house_prices\webmap`，也可以使用 `DATA_WORKSHOP_PATH` 或 `--from=` 指定其他路径：
