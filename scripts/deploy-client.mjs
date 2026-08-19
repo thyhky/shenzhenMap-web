@@ -37,7 +37,7 @@ await runWrangler(wrangler, ['deploy', '--dry-run', '--config', target.config], 
 })
 await runWrangler(wrangler, ['deploy', '--config', target.config], {
   cwd: projectRoot,
-  donePatterns: [/Deployment complete/, /No deployable assets/],
+  donePatterns: [/Deployment complete/, /No deployable assets/, /Current Version ID:/],
   failPatterns: [/ERROR/i, /Deployment failed/i],
 })
 

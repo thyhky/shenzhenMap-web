@@ -52,6 +52,10 @@ const detail = await api('/api/estates/2')
 const history = await api('/api/estates/2/price-history?limit=100')
 const pageOne = await api('/api/search?q=%E5%8F%AF%E5%9B%AD&minPrice=0&maxPrice=500000&page=1&pageSize=2')
 const pageTwo = await api('/api/search?q=%E5%8F%AF%E5%9B%AD&minPrice=0&maxPrice=500000&page=2&pageSize=2')
+const priceRanking = await api('/api/ranking?sort=price&page=1&pageSize=2')
+const yieldRanking = await api('/api/ranking?sort=rentYield&minSamples=3&page=1&pageSize=2')
+const exportResponse = await request('/api/export/rent-yield.csv?district=%E5%85%89%E6%98%8E%E5%8C%BA&minSamples=3&limit=2')
+const exportedCsv = await exportResponse.text()
 const streets = await api('/api/streets')
 const layerStreets = await api('/api/layers/streets')
 const schools = await api('/api/schools')
@@ -142,6 +146,17 @@ const result = {
     secondPage: pageTwo.results.map((estate) => estate.id),
     hasMore: pageOne.pagination.hasMore,
   },
+  ranking: {
+    priceItems: priceRanking.items.length,
+    priceFirstRank: priceRanking.items[0]?.rank ?? null,
+    yieldItems: yieldRanking.items.length,
+    yieldFirstRank: yieldRanking.items[0]?.rank ?? null,
+  },
+  export: {
+    contentType: exportResponse.headers.get('Content-Type'),
+    disposition: exportResponse.headers.get('Content-Disposition'),
+    hasHeader: /^\uFEFF?global_rank,district_rank/.test(exportedCsv),
+  },
   streetFeatures: streets.features.length,
   frontend: {
     hasApp: html.includes('<div id="app"></div>'),
@@ -187,6 +202,13 @@ if (
   result.newSearch.firstResult !== '海德园' ||
   result.history.count < 1 ||
   result.pagination.firstPage.some((id) => result.pagination.secondPage.includes(id)) ||
+  result.ranking.priceItems !== 2 ||
+  result.ranking.priceFirstRank !== 1 ||
+  result.ranking.yieldItems !== 2 ||
+  result.ranking.yieldFirstRank !== 1 ||
+  !result.export.contentType?.startsWith('text/csv') ||
+  !result.export.disposition?.includes('attachment;') ||
+  !result.export.hasHeader ||
   result.streetFeatures !== 78 ||
   !result.frontend.hasApp ||
   !result.frontend.hasSixLegendBands ||

@@ -83,9 +83,17 @@ H5 输出到 `uniapp/dist/build/h5/`；微信小程序输出到 `uniapp/dist/bui
 
 阶段 4 已完成结果分页、全市搜索、排行、按需详情、7/30/90 天历史、CSV/价格图导出和数据说明。地图点击仍只显示简略卡，用户主动打开详情后才请求完整信息；各分页与详情请求均使用独立请求序号。
 
-阶段 5 已完成 H5 桌面三栏断点，并保留单一 Leaflet 实例和共享业务状态。代码功能均达到“已迁移”，下一步是预览域名、微信开发者工具和真机“已验收”。
+阶段 5 已完成 H5 桌面三栏断点，并保留单一 Leaflet 实例和共享业务状态。代码功能均达到“已迁移”，下一步是 H5 浏览器、微信开发者工具和真机“已验收”。
 
 发布配置分离：`wrangler.uni-preview.jsonc` 用于独立 Workers 预览地址，`wrangler.uni-production.jsonc` 用于正式切换，原 `wrangler.jsonc` 保留旧 Web 静态资源回滚。Worker/API 使用 `npm run rollback:worker` 回退上一部署版本；日常数据流水线默认不部署客户端，只有显式 `pipeline:uni` 或 `pipeline:legacy` 才发布。
+
+## H5 预览记录
+
+- 2026-08-20 部署地址：<https://shenzhen-estate-map-uni-preview.shenzhen-estate-map-cloudflare.workers.dev>
+- Worker 版本：`44a9f599-51e3-4586-8e2e-dcc147637b63`
+- 自动验收通过：健康检查、4302 条小区数据、边缘缓存、搜索分页、价格/租售比排行、CSV、详情、价格历史、街道、学校、学区、SPA 回退和前端功能标记。
+- 静态资源验证通过：CSP 生效，带哈希的 JS/CSS 使用一年 immutable 缓存。
+- 待人工验收：桌面和手机浏览器交互、地图拖动/缩放、文件下载；微信开发者工具和真机地图、文件分享及相册权限。
 
 ## 约束
 
