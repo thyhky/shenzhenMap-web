@@ -9,6 +9,22 @@ export interface EstateFilters {
   sort: 'price-desc' | 'price-asc' | 'rent-yield'
 }
 
+export type EstateSort = EstateFilters['sort']
+export type RankingSort = 'price' | 'rentYield'
+
+export interface Pagination {
+  page: number
+  pageSize: number
+  hasMore: boolean
+}
+
+export interface Bounds {
+  west: number
+  south: number
+  east: number
+  north: number
+}
+
 export interface StreetOption {
   name: string
   district: string
@@ -17,16 +33,55 @@ export interface StreetOption {
   avgPrice: number | null
 }
 
+export interface DataScopeMetadata {
+  id: string
+  label: string
+  kind: 'entity' | 'overlay'
+  status: 'active' | 'planned' | 'retired'
+  source: {
+    key: string | null
+    name: string
+    url: string | null
+  } | null
+  sourceVersion: string | null
+  termsUrl: string | null
+  licenseNote: string | null
+  contentVersion: string | null
+  sourceObservedAt: string | null
+  importedAt: string | null
+  disclaimer: string | null
+}
+
 export interface MetaResponse {
   districts: string[]
   streets: StreetOption[]
   totals: { estates: number; priced: number }
   priceRange: { min: number; max: number }
   sourceObservedAt: string | null
+  importedAt: string | null
+  recordChangedAt: string | null
+  updatedAt: string | null
   catalog: {
     dataVersion: string | null
     disclaimer: string
+    scopes: DataScopeMetadata[]
   }
+}
+
+export interface RankingItem extends EstateSummary {
+  rank: number
+}
+
+export interface RankingResponse {
+  scope: 'estates-ranking'
+  sort: RankingSort
+  items: RankingItem[]
+  stats: {
+    total: number
+    averageRentYield: number | null
+    averagePrice: number | null
+  }
+  pagination: Pagination
 }
 
 export interface EstateSummary {
@@ -132,6 +187,25 @@ export interface StreetFeatureCollection {
   features: StreetFeature[]
 }
 
+export interface HeatmapResponse {
+  scope: 'estates-heatmap'
+  label: string
+  bounds: Bounds | null
+  total: number
+  priced: number
+  averagePrice: number | null
+  points: Array<{
+    lng: number
+    lat: number
+    price: number | null
+  }>
+  boundaries: Array<{
+    type: 'Feature'
+    properties: { name: string; district: string }
+    geometry: AreaGeometry
+  }>
+}
+
 export interface SchoolSupplement {
   id: number
   name: string | null
@@ -206,11 +280,13 @@ export interface MapResponse {
     priced: number
     averagePrice: number | null
   }
-  pagination: {
-    page: number
-    pageSize: number
-    hasMore: boolean
-  }
+  pagination: Pagination
+  matchBounds: Bounds | null
+  truncated: boolean
+  sourceObservedAt: string | null
+  importedAt: string | null
+  recordChangedAt: string | null
+  updatedAt: string | null
 }
 
 export interface Viewport {

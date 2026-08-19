@@ -27,6 +27,11 @@ function resetDraft() {
   Object.assign(draft, defaults)
 }
 
+function setAppliedSort(sort: EstateFilters['sort']) {
+  draft.sort = sort
+  applied.sort = sort
+}
+
 export function useEstateFilters() {
   return {
     draft,
@@ -34,5 +39,6 @@ export function useEstateFilters() {
     updateDraft,
     applyDraft,
     resetDraft,
+    setAppliedSort,
   }
 }

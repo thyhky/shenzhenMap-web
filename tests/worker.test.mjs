@@ -53,6 +53,7 @@ class MemoryCache {
   }
 
   async put(request, response) {
+    if (response.headers.get('Cache-Control')?.includes('no-store')) return
     this.values.set(this.keyOf(request), response.clone())
   }
 }
@@ -156,7 +157,8 @@ async function setup() {
   }
   database.exec(appMetadataUpsert('global_disclaimer', globalDisclaimer, importedAt))
 
-  globalThis.caches = { default: new MemoryCache() }
+  const cache = new MemoryCache()
+  globalThis.caches = { default: cache }
   const env = { DB: new D1Mock(database) }
   async function request(path) {
     const pending = []
@@ -168,7 +170,7 @@ async function setup() {
     await Promise.all(pending)
     return response
   }
-  return { database, env, request }
+  return { database, env, request, cache }
 }
 
 test('worker paginates results and canonicalizes map cache keys', async () => {
@@ -299,8 +301,9 @@ test('school zones layer exposes approximate zone polygons', async () => {
 })
 
 test('cached responses survive D1 failure via version fallback', async () => {
-  const { env, request } = await setup()
+  const { env, request, cache } = await setup()
   await request('/api/meta')
+  assert.ok([...cache.values.keys()].some((key) => key.endsWith('/data-version')), JSON.stringify([...cache.values.keys()]))
   const hit = await request('/api/meta')
   assert.equal(hit.headers.get('X-Worker-Cache'), 'HIT')
   env.DB = { prepare() { throw new Error('D1 unavailable') } }
@@ -378,4 +381,62 @@ test('estates support sort orderings with distinct cache keys', async () => {
     (await invalidSort.json()).results.map((estate) => estate.id),
     defaultBody.results.map((estate) => estate.id),
   )
+})
+
+test('search returns rent fields for rent-yield sorting', async () => {
+  const { database, request } = await setup()
+  database.exec('UPDATE estates SET rent_price = 90, rent_yield = 3.6, rent_samples = 5 WHERE id = 3')
+  database.exec('UPDATE estates SET rent_price = 70, rent_yield = 2.1, rent_samples = 4 WHERE id = 4')
+  const response = await request('/api/search?q=%E6%B5%8B%E8%AF%95&minPrice=0&maxPrice=500000&sort=rent-yield&pageSize=5')
+  const body = await response.json()
+  assert.equal(response.status, 200)
+  assert.equal(body.results[0].id, 3)
+  assert.equal(body.results[0].rentYield, 3.6)
+  assert.equal(body.results[0].rentSamples, 5)
+  assert.equal(body.items.find((item) => item.id === 3)?.rentYield, 3.6)
+})
+
+test('ranking paginates with continuous ranks and filters rent samples', async () => {
+  const { database, request } = await setup()
+  for (let id = 1; id <= 8; id += 1) {
+    database.exec(`UPDATE estates SET rent_price = ${60 + id}, rent_yield = ${id / 10 + 1}, rent_samples = ${id === 1 ? 2 : 4} WHERE id = ${id}`)
+  }
+  const first = await request('/api/ranking?sort=rentYield&minSamples=3&minPrice=0&maxPrice=500000&page=1&pageSize=3')
+  const firstBody = await first.json()
+  assert.equal(first.status, 200)
+  assert.deepEqual(firstBody.items.map((item) => item.rank), [1, 2, 3])
+  assert.ok(firstBody.items.every((item) => item.rentSamples >= 3))
+  const second = await request('/api/ranking?sort=rentYield&minSamples=3&minPrice=0&maxPrice=500000&page=2&pageSize=3')
+  const secondBody = await second.json()
+  assert.deepEqual(secondBody.items.map((item) => item.rank), [4, 5, 6])
+  assert.equal(new Set([...firstBody.items, ...secondBody.items].map((item) => item.id)).size, 6)
+
+  const longQuery = 'a'.repeat(40)
+  const canonical = await request(`/api/ranking?q=${longQuery}x&sort=rentYield&minSamples=03&page=01&pageSize=020`)
+  assert.equal(canonical.headers.get('X-Worker-Cache'), 'MISS')
+  const equivalent = await request(`/api/ranking?pageSize=20&page=1&minSamples=3&sort=rentYield&q=${longQuery}y`)
+  assert.equal(equivalent.headers.get('X-Worker-Cache'), 'HIT')
+})
+
+test('ranking CSV includes BOM, school fields, and download headers', async () => {
+  const { database, request } = await setup()
+  database.exec('UPDATE estates SET rent_price = 80, rent_yield = 3.2, rent_samples = 5 WHERE id = 1')
+  const response = await request('/api/export/rent-yield.csv?district=%E5%85%89%E6%98%8E%E5%8C%BA&minPrice=0&maxPrice=500000&minSamples=3&limit=10')
+  const body = await response.text()
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('Content-Type'), /text\/csv/)
+  assert.match(response.headers.get('Content-Disposition'), /rent-yield-best-school\.csv/)
+  assert.ok(body.charCodeAt(0) === 0xfeff || body.startsWith('global_rank'))
+  assert.match(body, /best_school_name/)
+  assert.match(body, /测试光明中学/)
+})
+
+test('heatmap returns null bounds for an empty district', async () => {
+  const { request } = await setup()
+  const response = await request('/api/heatmap?district=%E4%B8%8D%E5%AD%98%E5%9C%A8%E5%8C%BA&minPrice=0&maxPrice=500000')
+  const body = await response.json()
+  assert.equal(response.status, 200)
+  assert.equal(body.total, 0)
+  assert.equal(body.bounds, null)
+  assert.deepEqual(body.points, [])
 })

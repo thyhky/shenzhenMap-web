@@ -6,6 +6,7 @@ import type {
   MapItem,
   MapSelection,
   MapViewport,
+  Bounds,
   SchoolFeatureCollection,
   SchoolZoneFeature,
   SchoolZoneFeatureCollection,
@@ -24,6 +25,8 @@ const props = defineProps<{
   showBoundaries: boolean
   showSchools: boolean
   showSchoolZones: boolean
+  focusBounds: Bounds | null
+  focusRevision: number
 }>()
 
 const emit = defineEmits<{
@@ -204,6 +207,20 @@ watch(() => props.items, drawPoints)
 watch([() => props.boundaries, () => props.showBoundaries], drawBoundaries)
 watch([() => props.schools, () => props.showSchools], drawSchools)
 watch([() => props.schoolZones, () => props.showSchoolZones], drawSchoolZones)
+watch(() => props.focusRevision, () => {
+  if (!map || !props.focusBounds) return
+  const bounds = props.focusBounds
+  if (bounds.west === bounds.east && bounds.south === bounds.north) {
+    map.setView([bounds.south, bounds.west], 15)
+    return
+  }
+  const mobile = window.innerWidth <= 900
+  map.fitBounds([[bounds.south, bounds.west], [bounds.north, bounds.east]], {
+    paddingTopLeft: [32, mobile ? 120 : 32],
+    paddingBottomRight: [32, mobile ? 140 : 32],
+    maxZoom: 15,
+  })
+})
 watch(
   () => [props.latitude, props.longitude, props.zoom] as const,
   ([latitude, longitude, zoom]) => {

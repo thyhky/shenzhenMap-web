@@ -136,7 +136,7 @@ const JSON_HEADERS = {
 
 const API_CACHE_CONTROL = 'public, max-age=0, s-maxage=300'
 const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' }
-const CACHE_SCHEMA_VERSION = '7'
+const CACHE_SCHEMA_VERSION = '8'
 const VERSION_CACHE_KEY = `https://worker-cache.invalid/${CACHE_SCHEMA_VERSION}/data-version`
 const RATE_LIMIT_WINDOW_SECONDS = 10
 const RATE_LIMITS: Record<string, number> = { map: 60, search: 30, heatmap: 10, export: 10 }
@@ -516,7 +516,8 @@ async function handleEstates(url: URL, env: Env): Promise<Response> {
        GROUP BY cell_x, cell_y LIMIT 601`,
     ).bind(filters.west, cellSize, filters.south, cellSize, ...where.values)
     : env.DB.prepare(
-      `SELECT id, name, district, street, place_name, price, has_price, ref_price, lng, lat, updated_at,
+      `SELECT id, name, district, street, place_name, price, has_price, ref_price,
+        rent_price, rent_yield, rent_samples, lng, lat, updated_at,
         source_observed_at, imported_at, record_changed_at
        FROM estates WHERE ${where.sql}
        ORDER BY ${orderBy} LIMIT 1001`,
@@ -570,7 +571,7 @@ async function handleEstates(url: URL, env: Env): Promise<Response> {
       ...pagination,
       hasMore: pagination.page * pagination.pageSize < (stats?.total ?? 0),
     },
-    matchBounds: stats?.west === undefined ? null : {
+    matchBounds: stats?.west == null ? null : {
       west: stats.west,
       south: stats.south,
       east: stats.east,
@@ -602,13 +603,15 @@ async function handleSearch(url: URL, env: Env): Promise<Response> {
        FROM estates WHERE ${where.sql}`,
     ).bind(...where.values),
     env.DB.prepare(
-      `SELECT id, name, district, street, place_name, price, has_price, ref_price, lng, lat, updated_at,
+       `SELECT id, name, district, street, place_name, price, has_price, ref_price,
+         rent_price, rent_yield, rent_samples, lng, lat, updated_at,
         source_observed_at, imported_at, record_changed_at
        FROM estates WHERE ${where.sql}
        ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
     ).bind(...where.values, pagination.pageSize, offset),
     env.DB.prepare(
-      `SELECT id, name, district, street, place_name, price, has_price, ref_price, lng, lat, updated_at,
+       `SELECT id, name, district, street, place_name, price, has_price, ref_price,
+         rent_price, rent_yield, rent_samples, lng, lat, updated_at,
         source_observed_at, imported_at, record_changed_at
        FROM estates WHERE ${where.sql}
        ORDER BY ${orderBy} LIMIT 201`,
@@ -642,7 +645,7 @@ async function handleSearch(url: URL, env: Env): Promise<Response> {
       ...pagination,
       hasMore: pagination.page * pagination.pageSize < (stats?.total ?? 0),
     },
-    matchBounds: stats?.west === undefined ? null : {
+    matchBounds: stats?.west == null ? null : {
       west: stats.west,
       south: stats.south,
       east: stats.east,
@@ -705,7 +708,7 @@ async function handleHeatmap(url: URL, env: Env): Promise<Response> {
   return json({
     scope: 'estates-heatmap',
     label: filters.street ? `${filters.district} · ${filters.street}` : filters.district,
-    bounds: stats?.west === undefined ? null : {
+    bounds: stats?.west == null ? null : {
       west: stats.west,
       south: stats.south,
       east: stats.east,
@@ -1127,18 +1130,20 @@ function canonicalCachePath(url: URL): string | null {
     return `/api/estates?${params}`
   }
   if (url.pathname === '/api/ranking') {
+    const filters = parseEstateFilters(url.searchParams)
+    const pagination = parsePagination(url.searchParams)
     const params = new URLSearchParams({
       sort: url.searchParams.get('sort') === 'price' ? 'price' : 'rentYield',
-      district: url.searchParams.get('district') || '',
-      street: url.searchParams.get('street') || '',
-      q: url.searchParams.get('q') || '',
-      pricedOnly: url.searchParams.get('pricedOnly') === '1' ? '1' : '0',
-      missingRefPrice: url.searchParams.get('missingRefPrice') === '1' ? '1' : '0',
-      minPrice: url.searchParams.get('minPrice') || '',
-      maxPrice: url.searchParams.get('maxPrice') || '',
-      page: url.searchParams.get('page') || '1',
-      pageSize: url.searchParams.get('pageSize') || '20',
-      minSamples: url.searchParams.get('minSamples') || '3',
+      district: filters.district,
+      street: filters.street,
+      q: filters.keyword,
+      pricedOnly: filters.pricedOnly ? '1' : '0',
+      missingRefPrice: filters.missingRefPrice ? '1' : '0',
+      minPrice: String(filters.minPrice),
+      maxPrice: String(filters.maxPrice),
+      page: String(pagination.page),
+      pageSize: String(pagination.pageSize),
+      minSamples: String(integerParam(url.searchParams, 'minSamples', 3, 0, 60)),
     })
     return `/api/ranking?${params}`
   }
@@ -1177,7 +1182,9 @@ async function dataVersion(env: Env, ctx: ExecutionContext): Promise<string> {
     ).bind('data_version').first<{ value: string }>()
     if (!row?.value) throw new Error('Data version is unavailable')
     ctx.waitUntil(
-      caches.default.put(VERSION_CACHE_KEY, json({ value: row.value }, { headers: NO_STORE_HEADERS })).catch(() => {}),
+      caches.default.put(VERSION_CACHE_KEY, json({ value: row.value }, {
+        headers: { 'Cache-Control': 'public, max-age=86400' },
+      })).catch(() => {}),
     )
     return row.value
   } catch (error) {
@@ -1209,7 +1216,9 @@ async function rateLimit(request: Request, url: URL): Promise<void> {
       if (Number.isFinite(parsed)) count = parsed + 1
     }
     if (count > limit) throw new HttpError(429, '请求过于频繁，请稍后再试')
-    await caches.default.put(key, new Response(String(count), { headers: NO_STORE_HEADERS }))
+    await caches.default.put(key, new Response(String(count), {
+      headers: { 'Cache-Control': `public, max-age=${RATE_LIMIT_WINDOW_SECONDS}` },
+    }))
   } catch (error) {
     if (error instanceof HttpError) throw error
   }

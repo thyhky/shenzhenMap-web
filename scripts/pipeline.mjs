@@ -8,6 +8,9 @@ const wrangler = resolve(projectRoot, 'node_modules', 'wrangler', 'bin', 'wrangl
 const viteBin = resolve(projectRoot, 'node_modules', 'vite', 'bin', 'vite.js')
 const tscBin = resolve(projectRoot, 'node_modules', 'typescript', 'bin', 'tsc')
 const vueTscBin = resolve(projectRoot, 'node_modules', 'vue-tsc', 'bin', 'vue-tsc.js')
+const uniRoot = resolve(projectRoot, 'uniapp')
+const uniBin = resolve(uniRoot, 'node_modules', '@dcloudio', 'vite-plugin-uni', 'bin', 'uni.js')
+const uniVueTscBin = resolve(uniRoot, 'node_modules', 'vue-tsc', 'bin', 'vue-tsc.js')
 const defaultUrl = 'https://map.okzer.xyz'
 
 const args = process.argv.slice(2)
@@ -16,12 +19,16 @@ const valueOf = (name) => {
   const entry = args.find((argument) => argument.startsWith(name + '='))
   return entry ? entry.slice(name.length + 1) : undefined
 }
+const uniClient = flag('--uni-client')
+const legacyClient = flag('--legacy-client')
+if (uniClient && legacyClient) throw new Error('Choose only one client deployment flag')
+const deployClient = uniClient ? 'uni' : legacyClient ? 'legacy' : null
 
 if (flag('--help') || flag('-h')) {
   console.log(`Usage: node scripts/pipeline.mjs [options]
 
 One-shot pipeline: sync data -> generate SQL parts -> migrate remote D1
--> apply parts -> build & deploy worker -> verify.
+-> apply parts -> optionally build/deploy a selected client -> verify.
 
   --sync-from=DIR   source webmap dir for sync-data (default: C:\\code\\Codex\\fetch_house_prices\\webmap)
   --skip-sync       use the existing ./data snapshot without re-syncing
@@ -32,13 +39,15 @@ One-shot pipeline: sync data -> generate SQL parts -> migrate remote D1
   --skip-migrate    do not apply pending D1 migrations
   --skip-deploy     do not build/deploy the worker
   --skip-verify     do not run the production verification
+  --uni-client      build and deploy the uni-app H5 client instead of legacy Web
+  --legacy-client   build and deploy the legacy Web client
   --url=...         verification base URL (default ${defaultUrl})
   --help            show this help`)
   process.exit(0)
 }
 
 const knownFlags = new Set([
-  '--help', '-h', '--skip-sync', '--skip-migrate', '--skip-deploy', '--skip-verify', '--skip-backup',
+  '--help', '-h', '--skip-sync', '--skip-migrate', '--skip-deploy', '--skip-verify', '--skip-backup', '--uni-client', '--legacy-client',
 ])
 const unknown = args.filter((argument) => {
   const name = argument.includes('=') ? argument.slice(0, argument.indexOf('=')) : argument
@@ -107,12 +116,12 @@ steps.push({
   args: [resolve(projectRoot, 'scripts', 'prune-price-history.mjs')],
   cwd: projectRoot,
 })
-if (!flag('--skip-deploy')) {
+if (!flag('--skip-deploy') && deployClient) {
   steps.push({
-    desc: 'Typecheck (vue-tsc)',
+    desc: deployClient === 'uni' ? 'Typecheck uni-app client' : 'Typecheck legacy Web client',
     cmd: process.execPath,
-    args: [vueTscBin, '-p', 'tsconfig.app.json', '--noEmit'],
-    cwd: projectRoot,
+    args: deployClient === 'uni' ? [uniVueTscBin, '--noEmit'] : [vueTscBin, '-p', 'tsconfig.app.json', '--noEmit'],
+    cwd: deployClient === 'uni' ? uniRoot : projectRoot,
   })
   steps.push({
     desc: 'Typecheck (worker tsc)',
@@ -121,18 +130,16 @@ if (!flag('--skip-deploy')) {
     cwd: projectRoot,
   })
   steps.push({
-    desc: 'Build frontend assets',
+    desc: deployClient === 'uni' ? 'Build uni-app H5 assets' : 'Build legacy Web assets',
     cmd: process.execPath,
-    args: [viteBin, 'build'],
-    cwd: projectRoot,
+    args: deployClient === 'uni' ? [uniBin, 'build'] : [viteBin, 'build'],
+    cwd: deployClient === 'uni' ? uniRoot : projectRoot,
   })
   steps.push({
     desc: 'Deploy worker',
-    cmd: wrangler,
-    args: ['deploy'],
+    cmd: process.execPath,
+    args: [resolve(projectRoot, 'scripts', 'deploy-client.mjs'), deployClient === 'uni' ? 'production' : 'legacy'],
     cwd: projectRoot,
-    donePatterns: [/Deployment complete/, /No deployable assets/],
-    failPatterns: [/^X /, /fetch failed/i, /ERROR/i],
   })
 }
 if (!flag('--skip-verify')) {

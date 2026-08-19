@@ -1,9 +1,17 @@
 import { readFile } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const baseUrl = process.argv[2] || 'https://map.okzer.xyz'
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+if ((process.env.HTTPS_PROXY || process.env.HTTP_PROXY) && !process.execArgv.includes('--use-env-proxy')) {
+  execFileSync(process.execPath, ['--use-env-proxy', fileURLToPath(import.meta.url), ...process.argv.slice(2)], {
+    cwd: projectRoot,
+    stdio: 'inherit',
+  })
+  process.exit(0)
+}
 const sourceRoot = resolve(projectRoot, 'data')
 
 async function request(path) {
@@ -55,8 +63,27 @@ await plannedLayerResponse.body?.cancel()
 const html = await get('/')
 const assetPath = html.match(/src="([^"]+\.js)"/)?.[1]
 if (!assetPath) throw new Error('Unable to locate the frontend JavaScript asset')
-const javascript = await get(assetPath)
-const legendColors = ['#315b6d', '#2d817c', '#79a86b', '#e3b657', '#df7b45', '#bb3e45']
+const javascriptPaths = new Set([assetPath])
+const javascriptBodies = []
+const queue = [assetPath]
+while (queue.length && javascriptPaths.size <= 40) {
+  const currentPath = queue.shift()
+  const body = await get(currentPath)
+  javascriptBodies.push(body)
+  const dependencies = body.matchAll(/["']([^"']+\.js)["']/g)
+  for (const match of dependencies) {
+    const source = match[1]
+    const resolved = source.startsWith('assets/')
+      ? `/${source}`
+      : new URL(source, `${baseUrl}${currentPath}`).pathname
+    if (!resolved.startsWith('/assets/') || javascriptPaths.has(resolved)) continue
+    javascriptPaths.add(resolved)
+    queue.push(resolved)
+  }
+}
+const javascript = javascriptBodies.join('\n')
+const legacyLegendColors = ['#315b6d', '#2d817c', '#79a86b', '#e3b657', '#df7b45', '#bb3e45']
+const uniLegendColors = ['#2f5fb3', '#10a09a', '#79a82f', '#e3b657', '#df7b45', '#bb3e45']
 const legacyPaths = ['/estates.js', '/streets.js', '/estates.geojson', '/streets.geojson']
 
 const result = {
@@ -118,10 +145,12 @@ const result = {
   streetFeatures: streets.features.length,
   frontend: {
     hasApp: html.includes('<div id="app"></div>'),
-    hasSixLegendBands: legendColors.every((color) => javascript.includes(color)),
+    hasSixLegendBands: [legacyLegendColors, uniLegendColors].some((colors) => colors.every((color) => javascript.includes(color))),
     hasMethodologyPanel: javascript.includes('数据来源与方法'),
-    hasSchoolLayer: javascript.includes('显示学校'),
-    hasSchoolZoneLayer: javascript.includes('显示学区范围'),
+    hasSchoolLayer: javascript.includes('显示学校') || javascript.includes('学校…'),
+    hasSchoolZoneLayer: javascript.includes('显示学区范围') || javascript.includes('学区…'),
+    hasRanking: javascript.includes('小区榜单') || javascript.includes('租售比排行'),
+    hasPriceHistory: javascript.includes('价格记录'),
   },
   legacyPaths: await Promise.all(legacyPaths.map(async (path) => {
     const body = await get(path)
@@ -164,6 +193,8 @@ if (
   !result.frontend.hasMethodologyPanel ||
   !result.frontend.hasSchoolLayer ||
   !result.frontend.hasSchoolZoneLayer ||
+  !result.frontend.hasRanking ||
+  !result.frontend.hasPriceHistory ||
   result.legacyPaths.some((item) => item.exposesDataset)
 ) {
   process.exitCode = 1

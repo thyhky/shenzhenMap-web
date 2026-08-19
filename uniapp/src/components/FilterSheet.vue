@@ -6,12 +6,17 @@ const props = defineProps<{
   filters: EstateFilters
   districts: string[]
   streets: StreetOption[]
+  csvLoading: boolean
+  heatmapLoading: boolean
+  canExport: boolean
 }>()
 
 const emit = defineEmits<{
   update: [patch: Partial<EstateFilters>]
   apply: []
   reset: []
+  'export-csv': []
+  'export-heatmap': []
 }>()
 
 const districtOptions = computed(() => ['全部区域', ...props.districts])
@@ -70,6 +75,13 @@ function inputValue(event: unknown) {
       <button class="secondary" @click="emit('reset')">重置</button>
       <button class="primary" @click="emit('apply')">应用筛选</button>
     </view>
+    <view class="tools">
+      <text class="tools-title">导出工具</text>
+      <button :disabled="csvLoading || !canExport" @click="emit('export-csv')">{{ csvLoading ? '正在准备…' : '租售比 + 最近学校 CSV' }}</button>
+      <button :disabled="heatmapLoading || !canExport" @click="emit('export-heatmap')">{{ heatmapLoading ? '正在生成…' : '当前行政区价格图' }}</button>
+      <text v-if="!canExport" class="tools-note">筛选条件已修改，请先点击“应用筛选”。</text>
+      <text class="tools-note">学校字段为同区最近点位估算，不代表官方学区或入学资格。</text>
+    </view>
   </view>
 </template>
 
@@ -86,4 +98,11 @@ function inputValue(event: unknown) {
 .actions button::after { display: none; }
 .secondary { border: 1rpx solid rgba(23, 52, 58, 0.2); background: #fff; color: #617074; }
 .primary { border: 1rpx solid #b64c39; background: #c93632; color: #fff; }
+.tools { display: grid; grid-template-columns: 1fr 1fr; gap: 10rpx; margin-top: 8rpx; border-top: 1rpx solid rgba(23, 52, 58, 0.14); padding-top: 18rpx; }
+.tools-title, .tools-note { grid-column: 1 / -1; }
+.tools-title { color: #17343a; font-size: 21rpx; font-weight: 700; }
+.tools button { margin: 0; border: 1rpx solid rgba(23, 52, 58, 0.2); border-radius: 9rpx; background: #f7f1e6; padding: 14rpx 9rpx; color: #40565a; font-size: 18rpx; line-height: 1.25; }
+.tools button::after { display: none; }
+.tools button[disabled] { opacity: 0.5; }
+.tools-note { color: #8a8580; font-size: 17rpx; line-height: 1.5; }
 </style>

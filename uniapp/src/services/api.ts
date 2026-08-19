@@ -2,9 +2,12 @@ import type {
   EstateFilters,
   EstateDetail,
   HistoryDays,
+  HeatmapResponse,
   MapResponse,
   MetaResponse,
   PriceHistoryResponse,
+  RankingResponse,
+  RankingSort,
   SchoolFeatureCollection,
   SchoolZoneFeatureCollection,
   StreetFeatureCollection,
@@ -38,7 +41,7 @@ function requestJson<T>(path: string, data: Record<string, string | number> = {}
   })
 }
 
-function filterParams(filters: EstateFilters) {
+function baseFilterParams(filters: EstateFilters) {
   return {
     district: filters.district,
     street: filters.street,
@@ -47,21 +50,73 @@ function filterParams(filters: EstateFilters) {
     missingRefPrice: filters.missingRefPrice ? 1 : 0,
     minPrice: Math.round(filters.minWan * 10000),
     maxPrice: Math.round(filters.maxWan * 10000),
-    sort: filters.sort,
   }
+}
+
+function filterParams(filters: EstateFilters) {
+  return { ...baseFilterParams(filters), sort: filters.sort }
+}
+
+function queryString(data: Record<string, string | number>) {
+  return Object.entries(data)
+    .filter(([, value]) => value !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join('&')
+}
+
+export function resolveApiUrl(path: string) {
+  return `${apiBase}${path}`
 }
 
 export function getMeta(): Promise<MetaResponse> {
   return requestJson('/api/meta')
 }
 
-export function getMapData(viewport: Viewport, filters: EstateFilters): Promise<MapResponse> {
+export function getMapData(viewport: Viewport, filters: EstateFilters, page = 1): Promise<MapResponse> {
   return requestJson('/api/estates', {
     ...viewport,
     ...filterParams(filters),
-    page: 1,
+    page,
     pageSize: 20,
   })
+}
+
+export function searchEstates(filters: EstateFilters, page = 1): Promise<MapResponse> {
+  return requestJson('/api/search', {
+    ...filterParams(filters),
+    page,
+    pageSize: 20,
+  })
+}
+
+export function getRanking(filters: EstateFilters, sort: RankingSort, page = 1): Promise<RankingResponse> {
+  return requestJson('/api/ranking', {
+    ...baseFilterParams(filters),
+    sort,
+    minSamples: 3,
+    page,
+    pageSize: 20,
+  })
+}
+
+export function getHeatmap(filters: EstateFilters): Promise<HeatmapResponse> {
+  return requestJson('/api/heatmap', {
+    district: filters.district,
+    street: filters.street,
+    pricedOnly: filters.pricedOnly ? 1 : 0,
+    missingRefPrice: filters.missingRefPrice ? 1 : 0,
+    minPrice: Math.round(filters.minWan * 10000),
+    maxPrice: Math.round(filters.maxWan * 10000),
+  })
+}
+
+export function getRankingExportUrl(filters: EstateFilters) {
+  const query = queryString({
+    ...baseFilterParams(filters),
+    minSamples: 3,
+    limit: 5000,
+  })
+  return resolveApiUrl(`/api/export/rent-yield.csv?${query}`)
 }
 
 export function getEstate(id: number): Promise<EstateDetail> {

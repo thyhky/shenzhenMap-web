@@ -3,7 +3,10 @@ defineProps<{
   total: number
   averagePrice: number | null
   loading: boolean
+  observedAt: string | null
 }>()
+
+const emit = defineEmits<{ methodology: [] }>()
 </script>
 
 <template>
@@ -15,7 +18,9 @@ defineProps<{
     <view class="stats">
       <text>小区 {{ total }}</text>
       <text>均价 {{ averagePrice ? `${(averagePrice / 10000).toFixed(1)}万` : '-' }}</text>
+      <text v-if="observedAt" class="observed">{{ observedAt.slice(0, 10) }}</text>
       <text v-if="loading">更新中</text>
+      <button @click="emit('methodology')">数据说明</button>
     </view>
   </view>
 </template>
@@ -48,4 +53,12 @@ defineProps<{
 .title { color: #17343a; font-family: serif; font-size: 32rpx; font-weight: 700; }
 .api-badge { border: 1rpx solid #2f7867; border-radius: 99rpx; padding: 2rpx 8rpx; color: #2f7867; font-size: 16rpx; }
 .stats { gap: 16rpx; color: #617074; font-size: 19rpx; white-space: nowrap; }
+.stats button { margin: 0; border: 0; background: transparent; padding: 5rpx; color: #b64c39; font-size: 18rpx; line-height: 1; }
+.stats button::after { display: none; }
+@media (max-width: 480px) {
+  .header-card { gap: 8rpx; }
+  .title { font-size: 27rpx; }
+  .stats { gap: 8rpx; font-size: 17rpx; }
+  .observed { display: none; }
+}
 </style>

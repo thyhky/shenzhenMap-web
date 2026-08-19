@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type {
+  Bounds,
   MapItem,
   MapSelection,
   MapViewport,
@@ -28,6 +29,8 @@ const props = defineProps<{
   showBoundaries: boolean
   showSchools: boolean
   showSchoolZones: boolean
+  focusBounds: Bounds | null
+  focusRevision: number
 }>()
 
 const emit = defineEmits<{
@@ -393,6 +396,20 @@ function readViewport() {
   })
 }
 
+function applyFocusBounds() {
+  if (!mapContext || !props.focusBounds) return
+  const bounds = props.focusBounds
+  mapContext.includePoints({
+    points: [
+      wgs84ToGcj02(bounds.south, bounds.west),
+      wgs84ToGcj02(bounds.north, bounds.east),
+    ],
+    padding: [90, 40, 140, 40],
+  })
+}
+
+watch(() => props.focusRevision, applyFocusBounds)
+
 function regionChange(event: unknown) {
   const source = event as {
     type?: string
@@ -428,6 +445,7 @@ onMounted(async () => {
   await nextTick()
   mapContext = uni.createMapContext('atlas-map', componentInstance)
   regionTimer = setTimeout(readViewport, 300)
+  applyFocusBounds()
 })
 
 onBeforeUnmount(() => {

@@ -24,9 +24,15 @@
     "uni:typecheck": "npm --prefix uniapp run type-check",
     "uni:build:h5": "npm --prefix uniapp run build:h5",
     "uni:build:mp-weixin": "npm --prefix uniapp run build:mp-weixin",
+    "uni:prepare:mp-weixin": "node scripts/prepare-wechat-release.mjs",
     "pipeline": "node scripts/pipeline.mjs",
+    "pipeline:uni": "node scripts/pipeline.mjs --uni-client",
+    "pipeline:legacy": "node scripts/pipeline.mjs --legacy-client",
     "verify:remote": "node scripts/verify-deployment.mjs",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && node scripts/deploy-client.mjs legacy",
+    "deploy:uni:preview": "npm test && npm run typecheck && npm run uni:typecheck && npm run uni:build:h5 && node scripts/deploy-client.mjs preview",
+    "deploy:uni:production": "npm test && npm run typecheck && npm run uni:typecheck && npm run uni:build:h5 && node scripts/deploy-client.mjs production",
+    "rollback:worker": "node scripts/deploy-client.mjs rollback"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

@@ -99,6 +99,18 @@ npm run uni:build:mp-weixin
 
 微信构建结果位于 `uniapp/dist/build/mp-weixin/`。完整计划与逐项验收状态见 [`docs/UNIAPP_MIGRATION_PLAN.md`](./docs/UNIAPP_MIGRATION_PLAN.md) 和 [`docs/UNIAPP_FEATURE_MATRIX.md`](./docs/UNIAPP_FEATURE_MATRIX.md)。在功能矩阵全部验收前，不替换当前生产客户端。
 
+uni-app 发布命令：
+
+```bash
+npm run deploy:uni:preview       # 独立 Workers 预览地址
+npm run deploy:uni:production    # 验收后切换 map.okzer.xyz
+npm run deploy                   # 重新部署旧 Web 静态资源
+npm run pipeline:uni             # 生产切换后的每日数据流水线
+npm run rollback:worker          # 回滚 Worker/API 到上一部署版本
+```
+
+微信正式构建先运行 `npm run uni:build:mp-weixin`，再设置 `WECHAT_APP_ID` 并执行 `npm run uni:prepare:mp-weixin`。公众平台必须配置 `https://map.okzer.xyz` 的 request/downloadFile 合法域名和相册隐私用途。
+
 ## 数据来源
 
 数据快照存放在 `./data/`，由 `npm run sync:data` 从独立的私有数据车间同步。默认来源是 `C:\code\Codex\fetch_house_prices\webmap`，也可以使用 `DATA_WORKSHOP_PATH` 或 `--from=` 指定其他路径：
@@ -212,7 +224,9 @@ npm run db:setup:local
 npm run dev
 
 # 4. 远程部署（需先 wrangler login，并复制 wrangler.example.jsonc 为 wrangler.jsonc）
-npm run pipeline          # 同步 -> 生成 parts -> 备份 -> 迁移 -> 应用 -> prune -> 构建 -> 部署 -> 验证
+npm run pipeline          # 同步 -> 生成 parts -> 备份 -> 迁移 -> 应用 -> prune -> 验证当前线上版本
+npm run pipeline:uni      # 同上，并构建/部署 uni-app H5
+npm run pipeline:legacy   # 同上，并构建/部署旧 Web
 ```
 
 如果不想使用仓库内已提交的 `webmap/`，可在 `fetch_house_prices` 里重新运行采集流水线（`fetch_xq_leyoujia.py` → `build_web_map_data.py` 等）生成新的快照，但需要乐有家等数据源仍可访问。
