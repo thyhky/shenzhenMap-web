@@ -34,12 +34,56 @@ export interface EstateSummary {
   name: string
   district: string
   street: string
+  placeName: string | null
   price: number | null
+  hasPrice: boolean
   refPrice: number | null
+  rentPrice: number | null
   rentYield: number | null
+  rentSamples: number
   lat: number
   lng: number
+  sourceObservedAt: string | null
+  importedAt: string | null
+  recordChangedAt: string | null
+  updatedAt: string | null
 }
+
+export interface NearbySchool {
+  id: string
+  name: string
+  level: 'primary' | 'junior'
+  levelLabel: string
+  distanceMeters: number
+  lockYears: number | null
+  holdYearsAdvised: number | null
+  degreePolicyNote: string | null
+}
+
+export interface EstateDetail extends EstateSummary {
+  scope: 'estates'
+  areaName: string | null
+  priceSource: string | null
+  rentSource: string | null
+  rentObservedAt: string | null
+  bestSchool: NearbySchool | null
+  nearbySchools: NearbySchool[]
+}
+
+export interface PriceHistoryPoint {
+  price: number
+  source: string
+  capturedAt: string
+  sourceObservedAt: string | null
+}
+
+export interface PriceHistoryResponse {
+  estateId: number
+  history: PriceHistoryPoint[]
+  truncated: boolean
+}
+
+export type HistoryDays = 7 | 30 | 90
 
 export interface EstateMapItem extends EstateSummary {
   kind: 'estate'

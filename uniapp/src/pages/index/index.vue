@@ -15,15 +15,26 @@ import MapH5 from '@/components/map/MapH5.vue'
 // #ifdef MP-WEIXIN
 import MapWeixin from '@/components/map/MapWeixin.vue'
 // #endif
-import { getMapData, getMeta, getSchools, getSchoolZones, getStreetBoundaries } from '@/services/api'
+import {
+  getEstate,
+  getEstatePriceHistory,
+  getMapData,
+  getMeta,
+  getSchools,
+  getSchoolZones,
+  getStreetBoundaries,
+} from '@/services/api'
 import { useEstateFilters } from '@/stores/filters'
 import type {
+  EstateDetail,
   EstateSummary,
+  HistoryDays,
   MapLayerName,
   MapResponse,
   MapSelection,
   MapViewport,
   MetaResponse,
+  PriceHistoryResponse,
   SchoolFeatureCollection,
   SchoolZoneFeatureCollection,
   SheetName,
@@ -45,6 +56,13 @@ const boundaries = ref<StreetFeatureCollection | null>(null)
 const schools = ref<SchoolFeatureCollection | null>(null)
 const schoolZones = ref<SchoolZoneFeatureCollection | null>(null)
 const selected = ref<MapSelection | null>(null)
+const estateDetail = ref<EstateDetail | null>(null)
+const priceHistory = ref<PriceHistoryResponse | null>(null)
+const historyDays = ref<HistoryDays>(30)
+const detailLoading = ref(false)
+const historyLoading = ref(false)
+const detailError = ref('')
+const historyError = ref('')
 const activeSheet = ref<SheetName>('')
 const loading = ref(true)
 const error = ref('')
@@ -57,6 +75,9 @@ const layerLoading = reactive<Record<MapLayerName, boolean>>({ boundaries: false
 const { draft, applied, updateDraft, applyDraft, resetDraft } = useEstateFilters()
 let mapRequestId = 0
 let lastMapRequestKey = ''
+let detailRequestId = 0
+let historyRequestId = 0
+let loadedHistoryDays: HistoryDays | null = null
 
 const sheetTitle = computed(() => (
   activeSheet.value === 'filters'
@@ -75,6 +96,28 @@ const selectedName = computed(() => {
 
 function toggleSheet(sheet: Exclude<SheetName, ''>) {
   activeSheet.value = activeSheet.value === sheet ? '' : sheet
+}
+
+function selectedEstateId(item: MapSelection | null) {
+  return item && 'kind' in item && item.kind === 'estate' ? item.id : null
+}
+
+function resetEstateDetail() {
+  detailRequestId += 1
+  historyRequestId += 1
+  estateDetail.value = null
+  priceHistory.value = null
+  loadedHistoryDays = null
+  detailLoading.value = false
+  historyLoading.value = false
+  detailError.value = ''
+  historyError.value = ''
+}
+
+function setSelection(item: MapSelection) {
+  if (selectedEstateId(selected.value) !== selectedEstateId(item)) resetEstateDetail()
+  selected.value = item
+  activeSheet.value = ''
 }
 
 async function loadMap() {
@@ -108,15 +151,82 @@ function applyFilters() {
 }
 
 function selectEstate(estate: EstateSummary) {
-  selected.value = { ...estate, kind: 'estate' }
+  setSelection({ ...estate, kind: 'estate' })
   mapCenter.value = { latitude: estate.lat, longitude: estate.lng }
   mapZoom.value = Math.max(15, mapZoom.value)
-  activeSheet.value = ''
 }
 
 function selectMapItem(item: MapSelection) {
-  selected.value = item
+  setSelection(item)
+}
+
+async function loadEstateDetail(id: number) {
+  const requestId = ++detailRequestId
+  detailLoading.value = true
+  detailError.value = ''
+  try {
+    const response = await getEstate(id)
+    if (requestId === detailRequestId && selectedEstateId(selected.value) === id) estateDetail.value = response
+  } catch (cause) {
+    if (requestId === detailRequestId) {
+      detailError.value = cause instanceof Error ? cause.message : '小区详情加载失败'
+    }
+  } finally {
+    if (requestId === detailRequestId) detailLoading.value = false
+  }
+}
+
+async function loadPriceHistory(id: number, days: HistoryDays) {
+  const requestId = ++historyRequestId
+  priceHistory.value = null
+  loadedHistoryDays = null
+  historyLoading.value = true
+  historyError.value = ''
+  try {
+    const response = await getEstatePriceHistory(id, days)
+    if (requestId === historyRequestId && selectedEstateId(selected.value) === id) {
+      priceHistory.value = response
+      loadedHistoryDays = days
+    }
+  } catch (cause) {
+    if (requestId === historyRequestId) {
+      historyError.value = cause instanceof Error ? cause.message : '价格历史加载失败'
+    }
+  } finally {
+    if (requestId === historyRequestId) historyLoading.value = false
+  }
+}
+
+function openDetails() {
+  activeSheet.value = 'detail'
+  const id = selectedEstateId(selected.value)
+  if (id === null) return
+  if (estateDetail.value?.id !== id && !detailLoading.value) void loadEstateDetail(id)
+  if ((priceHistory.value?.estateId !== id || loadedHistoryDays !== historyDays.value) && !historyLoading.value) {
+    void loadPriceHistory(id, historyDays.value)
+  }
+}
+
+function selectSheet(sheet: Exclude<SheetName, ''>) {
+  if (sheet !== 'detail') {
+    toggleSheet(sheet)
+    return
+  }
+  if (activeSheet.value === 'detail') activeSheet.value = ''
+  else openDetails()
+}
+
+function changeHistoryDays(days: HistoryDays) {
+  if (historyDays.value === days) return
+  historyDays.value = days
+  const id = selectedEstateId(selected.value)
+  if (id !== null) void loadPriceHistory(id, days)
+}
+
+function clearSelection() {
+  selected.value = null
   activeSheet.value = ''
+  resetEstateDetail()
 }
 
 function focusMap(view: { latitude: number; longitude: number; zoom: number }) {
@@ -226,8 +336,8 @@ onLoad(async () => {
     <MapBriefCard
       v-if="selected && !activeSheet"
       :item="selected"
-      @close="selected = null"
-      @details="activeSheet = 'detail'"
+      @close="clearSelection"
+      @details="openDetails"
     />
 
     <BottomNav
@@ -235,7 +345,7 @@ onLoad(async () => {
       :district="applied.district"
       :total="snapshot?.stats.total ?? 0"
       :selected-name="selectedName"
-      @select="toggleSheet"
+      @select="selectSheet"
     />
 
     <BottomSheet :visible="Boolean(activeSheet)" :title="sheetTitle" @close="activeSheet = ''">
@@ -255,7 +365,18 @@ onLoad(async () => {
         :loading="loading"
         @select="selectEstate"
       />
-      <DetailSheet v-else :item="selected" />
+      <DetailSheet
+        v-else
+        :item="selected"
+        :estate-detail="estateDetail"
+        :history="priceHistory"
+        :history-days="historyDays"
+        :loading="detailLoading"
+        :history-loading="historyLoading"
+        :error="detailError"
+        :history-error="historyError"
+        @update:history-days="changeHistoryDays"
+      />
     </BottomSheet>
   </view>
 </template>

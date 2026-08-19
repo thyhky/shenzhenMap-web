@@ -1,7 +1,10 @@
 import type {
   EstateFilters,
+  EstateDetail,
+  HistoryDays,
   MapResponse,
   MetaResponse,
+  PriceHistoryResponse,
   SchoolFeatureCollection,
   SchoolZoneFeatureCollection,
   StreetFeatureCollection,
@@ -59,6 +62,14 @@ export function getMapData(viewport: Viewport, filters: EstateFilters): Promise<
     page: 1,
     pageSize: 20,
   })
+}
+
+export function getEstate(id: number): Promise<EstateDetail> {
+  return requestJson(`/api/estates/${id}`)
+}
+
+export function getEstatePriceHistory(id: number, days: HistoryDays): Promise<PriceHistoryResponse> {
+  return requestJson(`/api/estates/${id}/price-history`, { days, limit: 100 })
 }
 
 export async function getStreetBoundaries(): Promise<StreetFeatureCollection> {
