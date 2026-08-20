@@ -443,7 +443,7 @@ async function renderHeatmapWeixin(data: HeatmapResponse) {
   heatmapCanvasVisible.value = true
   await nextTick()
   const result = await queryHeatmapCanvas()
-  const ratio = uni.getWindowInfo().pixelRatio || 1
+  const ratio = wx.getWindowInfo().pixelRatio || 1
   const backingScale = Math.min(ratio, 1365 / result.width, 1365 / result.height)
   result.node.width = Math.floor(result.width * backingScale)
   result.node.height = Math.floor(result.height * backingScale)
@@ -598,8 +598,6 @@ function updateViewport(next: MapViewport) {
     north: next.north,
     zoom: next.zoom,
   }
-  mapCenter.value = { latitude: next.latitude, longitude: next.longitude }
-  mapZoom.value = next.zoom
   if (!applied.keyword.trim()) void loadMap()
 }
 

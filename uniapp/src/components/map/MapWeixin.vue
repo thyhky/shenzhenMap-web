@@ -40,10 +40,20 @@ const emit = defineEmits<{
 }>()
 
 const componentInstance = getCurrentInstance()?.proxy
-const windowInfo = uni.getWindowInfo()
+const windowInfo = wx.getWindowInfo()
 let mapContext: UniNamespace.MapContext | null = null
 let regionTimer: ReturnType<typeof setTimeout> | null = null
+let tapTimer: ReturnType<typeof setTimeout> | null = null
+let pendingTapAt = 0
+let pendingTapSource: 'map' | 'marker' | null = null
+let pendingTapAction: (() => void) | null = null
+let suppressMapTapUntil = 0
+let suppressViewportEmitUntil = 0
 const lastViewport = ref<MapViewport | null>(null)
+
+const DOUBLE_TAP_WINDOW_MS = 260
+const MARKER_TAP_GUARD_MS = 120
+const PROGRAM_VIEWPORT_GUARD_MS = 700
 
 const priceBands = [35000, 50000, 70000, 90000, 120000]
 const colors = ['#2f5fb3', '#10a09a', '#79a82f', '#e3b657', '#df7b45', '#bb3e45']
@@ -268,11 +278,49 @@ function selectItem(item: MapSelection) {
   })
 }
 
+function resetPendingTap() {
+  pendingTapAt = 0
+  pendingTapSource = null
+  pendingTapAction = null
+}
+
+function queueSingleTap(action: () => void, source: 'map' | 'marker') {
+  const now = Date.now()
+  if (tapTimer && pendingTapSource === 'map' && source === 'marker'
+    && now - pendingTapAt <= MARKER_TAP_GUARD_MS) {
+    pendingTapSource = source
+    pendingTapAction = action
+    return
+  }
+  if (tapTimer && now - pendingTapAt <= DOUBLE_TAP_WINDOW_MS) {
+    clearTimeout(tapTimer)
+    tapTimer = null
+    resetPendingTap()
+    return
+  }
+  if (tapTimer) clearTimeout(tapTimer)
+  pendingTapAt = now
+  pendingTapSource = source
+  pendingTapAction = action
+  tapTimer = setTimeout(() => {
+    tapTimer = null
+    const nextAction = pendingTapAction
+    resetPendingTap()
+    nextAction?.()
+  }, DOUBLE_TAP_WINDOW_MS)
+}
+
+function suppressViewportEmit(ms = PROGRAM_VIEWPORT_GUARD_MS) {
+  suppressViewportEmitUntil = Math.max(suppressViewportEmitUntil, Date.now() + ms)
+}
+
 function markerTap(event: unknown) {
   const markerId = Number((event as { detail?: { markerId?: number } }).detail?.markerId)
   const index = markerId - 1000000
   const item = clusterItems.value[index]
-  if (item) selectItem(item)
+  if (!item) return
+  suppressMapTapUntil = Date.now() + MARKER_TAP_GUARD_MS
+  queueSingleTap(() => selectItem(item), 'marker')
 }
 
 function mapTap(event: unknown) {
@@ -281,6 +329,11 @@ function mapTap(event: unknown) {
   const gcjLongitude = Number(detail?.longitude)
   if (!Number.isFinite(gcjLatitude) || !Number.isFinite(gcjLongitude)) return
   const { latitude, longitude } = gcj02ToWgs84(gcjLatitude, gcjLongitude)
+  if (Date.now() < suppressMapTapUntil) return
+  queueSingleTap(() => handleMapHitForPoint(latitude, longitude), 'map')
+}
+
+function handleMapHitForPoint(latitude: number, longitude: number) {
   const threshold = lastViewport.value
     ? Math.max(
         (lastViewport.value.east - lastViewport.value.west) / Math.max(320, windowInfo.windowWidth),
@@ -340,6 +393,7 @@ function mapTap(event: unknown) {
     if (!street) return
     const bounds = geometryBounds(street.feature.geometry)
     if (!bounds) return
+    suppressViewportEmit()
     mapContext.includePoints({
       points: [
         wgs84ToGcj02(bounds.south, bounds.west),
@@ -350,7 +404,7 @@ function mapTap(event: unknown) {
   }
 }
 
-function emitRegion(region: UniNamespace.MapContextGetRegionResult, scale: number) {
+function emitRegion(region: UniNamespace.MapContextGetRegionResult, scale: number, notify = true) {
   const zoom = Math.max(6, Math.min(18, Math.round(Number(scale || props.zoom))))
   const corners = [
     gcj02ToWgs84(region.southwest.latitude, region.southwest.longitude),
@@ -371,15 +425,15 @@ function emitRegion(region: UniNamespace.MapContextGetRegionResult, scale: numbe
     latitude: center.latitude,
     longitude: center.longitude,
   }
-  emit('viewport-change', lastViewport.value)
+  if (notify) emit('viewport-change', lastViewport.value)
 }
 
-function readViewport() {
+function readViewport(notify = true) {
   if (!mapContext) return
   let region: UniNamespace.MapContextGetRegionResult | null = null
   let scale: number | null = null
   const finish = () => {
-    if (region && scale !== null) emitRegion(region, scale)
+    if (region && scale !== null) emitRegion(region, scale, notify)
   }
   mapContext.getRegion({
     success: (value) => {
@@ -398,6 +452,7 @@ function readViewport() {
 function applyFocusBounds() {
   if (!mapContext || !props.focusBounds) return
   const bounds = props.focusBounds
+  suppressViewportEmit()
   mapContext.includePoints({
     points: [
       wgs84ToGcj02(bounds.south, bounds.west),
@@ -430,13 +485,14 @@ function regionChange(event: unknown) {
   const detail = raw.detail ?? raw
   const eventType = raw.type ?? detail.type ?? source.type
   if (eventType !== 'end') return
+  const notify = Date.now() >= suppressViewportEmitUntil
   if (regionTimer) clearTimeout(regionTimer)
   regionTimer = setTimeout(() => {
     if (detail.region && detail.scale) {
-      emitRegion(detail.region, detail.scale)
+      emitRegion(detail.region, detail.scale, notify)
       return
     }
-    readViewport()
+    readViewport(notify)
   }, 300)
 }
 
@@ -449,6 +505,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (regionTimer) clearTimeout(regionTimer)
+  if (tapTimer) clearTimeout(tapTimer)
   mapContext = null
 })
 </script>

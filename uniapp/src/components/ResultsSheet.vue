@@ -52,15 +52,15 @@ function rankingValue(item: RankingItem) {
 <template>
   <view class="results-sheet">
     <view class="tabs">
-      <button :class="{ active: mode === 'results' }" @click="emit('update:mode', 'results')">范围结果</button>
-      <button :class="{ active: mode === 'ranking' }" @click="emit('update:mode', 'ranking')">小区榜单</button>
+      <button class="tab-button" :class="{ active: mode === 'results' }" @click="emit('update:mode', 'results')">范围结果</button>
+      <button class="tab-button" :class="{ active: mode === 'ranking' }" @click="emit('update:mode', 'ranking')">小区榜单</button>
     </view>
 
     <template v-if="mode === 'results'">
       <view class="sorts">
-        <button :class="{ active: sort === 'price-desc' }" @click="emit('update:sort', 'price-desc')">价格从高到低</button>
-        <button :class="{ active: sort === 'price-asc' }" @click="emit('update:sort', 'price-asc')">价格从低到高</button>
-        <button :class="{ active: sort === 'rent-yield' }" @click="emit('update:sort', 'rent-yield')">租售比</button>
+        <button class="sort-button" :class="{ active: sort === 'price-desc' }" @click="emit('update:sort', 'price-desc')">价格从高到低</button>
+        <button class="sort-button" :class="{ active: sort === 'price-asc' }" @click="emit('update:sort', 'price-asc')">价格从低到高</button>
+        <button class="sort-button" :class="{ active: sort === 'rent-yield' }" @click="emit('update:sort', 'rent-yield')">租售比</button>
       </view>
       <input v-model="listKeyword" class="list-search" placeholder="仅搜索已加载结果" />
       <view class="summary">已加载 {{ results.length }} / {{ total }}<text v-if="hasListKeyword"> · 当前匹配 {{ visibleResults.length }}</text></view>
@@ -72,15 +72,15 @@ function rankingValue(item: RankingItem) {
           <view class="value"><text class="price">{{ priceText(estate.price) }}</text><text v-if="estate.rentYield !== null" class="yield">{{ estate.rentYield.toFixed(2) }}%</text></view>
         </button>
       </template>
-      <button v-if="hasMore && !hasListKeyword" class="load-more" :disabled="loadingMore" @click="emit('load-more-results')">
+      <button v-if="hasMore && !hasListKeyword" class="load-more" :class="{ disabled: loadingMore }" :disabled="loadingMore" @click="emit('load-more-results')">
         {{ loadingMore ? '正在加载…' : '加载更多结果' }}
       </button>
     </template>
 
     <template v-else>
       <view class="sorts ranking-sorts">
-        <button :class="{ active: rankingSort === 'rentYield' }" @click="emit('update:ranking-sort', 'rentYield')">租售比排行</button>
-        <button :class="{ active: rankingSort === 'price' }" @click="emit('update:ranking-sort', 'price')">价格排行</button>
+        <button class="sort-button" :class="{ active: rankingSort === 'rentYield' }" @click="emit('update:ranking-sort', 'rentYield')">租售比排行</button>
+        <button class="sort-button" :class="{ active: rankingSort === 'price' }" @click="emit('update:ranking-sort', 'price')">价格排行</button>
       </view>
       <view class="summary">已加载 {{ ranking.length }} / {{ rankingTotal }}</view>
       <view v-if="rankingLoading && !ranking.length" class="empty">正在加载榜单…</view>
@@ -92,7 +92,7 @@ function rankingValue(item: RankingItem) {
           <text class="price">{{ rankingValue(estate) }}</text>
         </button>
       </template>
-      <button v-if="rankingHasMore" class="load-more" :disabled="rankingLoadingMore" @click="emit('load-more-ranking')">
+      <button v-if="rankingHasMore" class="load-more" :class="{ disabled: rankingLoadingMore }" :disabled="rankingLoadingMore" @click="emit('load-more-ranking')">
         {{ rankingLoadingMore ? '正在加载…' : '加载更多榜单' }}
       </button>
     </template>
@@ -103,9 +103,9 @@ function rankingValue(item: RankingItem) {
 .results-sheet { padding: 10rpx 28rpx 40rpx; }
 .tabs, .sorts { display: flex; gap: 7rpx; }
 .tabs { margin-bottom: 12rpx; border-bottom: 1rpx solid rgba(23, 52, 58, 0.14); padding-bottom: 10rpx; }
-.tabs button, .sorts button { flex: 1; margin: 0; border: 1rpx solid rgba(23, 52, 58, 0.14); border-radius: 8rpx; background: transparent; padding: 11rpx 7rpx; color: #617074; font-size: 18rpx; line-height: 1.1; }
-.tabs button::after, .sorts button::after, .load-more::after { display: none; }
-.tabs button.active, .sorts button.active { border-color: #17343a; background: #17343a; color: #fff; }
+.tab-button, .sort-button { flex: 1; margin: 0; border: 1rpx solid rgba(23, 52, 58, 0.14); border-radius: 8rpx; background: transparent; padding: 11rpx 7rpx; color: #617074; font-size: 18rpx; line-height: 1.1; }
+.tab-button::after, .sort-button::after, .load-more::after { display: none; }
+.tab-button.active, .sort-button.active { border-color: #17343a; background: #17343a; color: #fff; }
 .list-search { box-sizing: border-box; width: 100%; height: 64rpx; margin-top: 12rpx; border: 1rpx solid rgba(23, 52, 58, 0.16); border-radius: 9rpx; background: #fffdf8; padding: 0 18rpx; color: #17343a; font-size: 20rpx; }
 .summary { border-bottom: 1rpx solid rgba(23, 52, 58, 0.14); padding: 13rpx 0; color: #617074; font-size: 20rpx; }
 .result-row { display: flex; align-items: center; justify-content: space-between; gap: 14rpx; width: 100%; margin: 0; border: 0; border-bottom: 1rpx solid rgba(23, 52, 58, 0.1); border-radius: 0; background: transparent; padding: 20rpx 0; text-align: left; line-height: 1.3; }
@@ -118,6 +118,6 @@ function rankingValue(item: RankingItem) {
 .price { flex: none; color: #b64c39; font-size: 21rpx; }
 .yield { color: #2f7867; font-size: 17rpx; }
 .load-more { width: 100%; margin: 18rpx 0 0; border: 1rpx solid #17343a; border-radius: 9rpx; background: transparent; padding: 15rpx; color: #17343a; font-size: 20rpx; line-height: 1; }
-.load-more[disabled] { opacity: 0.5; }
+.load-more.disabled { opacity: 0.5; }
 .empty { padding: 70rpx 20rpx; color: #7a8587; font-size: 22rpx; text-align: center; }
 </style>

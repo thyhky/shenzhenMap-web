@@ -24,7 +24,7 @@ function openUrl(url: string | null) {
 <template>
   <view class="method-mask" @click="emit('close')">
     <view class="method-card" @click.stop>
-      <view class="method-head"><text>数据来源与方法</text><button @click="emit('close')">关闭</button></view>
+      <view class="method-head"><text>数据来源与方法</text><button class="method-close" @click="emit('close')">关闭</button></view>
       <scroll-view scroll-y class="method-scroll">
         <text class="disclaimer">{{ meta.catalog.disclaimer }}</text>
         <view v-for="scope in meta.catalog.scopes" :key="scope.id" class="scope-card">
@@ -47,8 +47,8 @@ function openUrl(url: string | null) {
 .method-mask { position: fixed; z-index: 30; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(11, 31, 35, 0.58); padding: 28rpx; }
 .method-card { width: min(700rpx, 680px); max-height: 86vh; overflow: hidden; border: 1rpx solid rgba(23, 52, 58, 0.18); border-radius: 18rpx; background: #faf6ed; box-shadow: 0 24rpx 80rpx rgba(11, 31, 35, 0.35); }
 .method-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1rpx solid rgba(23, 52, 58, 0.14); padding: 22rpx 25rpx; color: #17343a; font-family: serif; font-size: 29rpx; font-weight: 700; }
-.method-head button, .source, .terms { margin: 0; border: 0; background: transparent; padding: 5rpx; color: #b64c39; font-size: 19rpx; line-height: 1.2; text-align: left; }
-.method-head button::after, .source::after, .terms::after { display: none; }
+.method-close, .source, .terms { margin: 0; border: 0; background: transparent; padding: 5rpx; color: #b64c39; font-size: 19rpx; line-height: 1.2; text-align: left; }
+.method-close::after, .source::after, .terms::after { display: none; }
 .method-scroll { box-sizing: border-box; max-height: calc(86vh - 84rpx); padding: 22rpx 25rpx 35rpx; }
 .disclaimer { display: block; border-left: 4rpx solid #c29a74; padding-left: 14rpx; color: #85614d; font-size: 19rpx; line-height: 1.6; }
 .scope-card { display: flex; flex-direction: column; gap: 8rpx; margin-top: 16rpx; border: 1rpx solid rgba(23, 52, 58, 0.12); border-radius: 10rpx; background: #fffdf8; padding: 16rpx; color: #617074; font-size: 18rpx; }

@@ -111,10 +111,10 @@ function distanceText(distance: number) {
     <text class="price">{{ priceText(selectedEstate.price) }}</text>
 
     <view class="fact-grid">
-      <view class="fact-card"><text>租金估算</text><text class="fact-value">{{ selectedEstate.rentPrice ? `${selectedEstate.rentPrice.toFixed(2)} 元/㎡/月` : '暂无' }}</text></view>
-      <view class="fact-card"><text>租售比</text><text class="fact-value">{{ selectedEstate.rentYield === null ? '暂无' : `${selectedEstate.rentYield.toFixed(2)}%` }}</text></view>
-      <view class="fact-card"><text>官方参考价</text><text class="fact-value">{{ priceText(selectedEstate.refPrice) }}</text></view>
-      <view class="fact-card"><text>租金样本</text><text class="fact-value">{{ selectedEstate.rentSamples || 0 }}</text></view>
+      <view class="fact-card"><text class="fact-label">租金估算</text><text class="fact-value">{{ selectedEstate.rentPrice ? `${selectedEstate.rentPrice.toFixed(2)} 元/㎡/月` : '暂无' }}</text></view>
+      <view class="fact-card"><text class="fact-label">租售比</text><text class="fact-value">{{ selectedEstate.rentYield === null ? '暂无' : `${selectedEstate.rentYield.toFixed(2)}%` }}</text></view>
+      <view class="fact-card"><text class="fact-label">官方参考价</text><text class="fact-value">{{ priceText(selectedEstate.refPrice) }}</text></view>
+      <view class="fact-card"><text class="fact-label">租金样本</text><text class="fact-value">{{ selectedEstate.rentSamples || 0 }}</text></view>
     </view>
     <text v-if="refGap" class="gap">{{ refGap }}</text>
 
@@ -125,7 +125,7 @@ function distanceText(distance: number) {
       <text class="section-title">邻近学校参考</text>
       <view v-for="school in estateDetail.nearbySchools" :key="school.id" class="school-row">
         <text>{{ school.name }} · {{ school.levelLabel }}</text>
-        <text>{{ distanceText(school.distanceMeters) }}</text>
+        <text class="school-distance">{{ distanceText(school.distanceMeters) }}</text>
       </view>
       <text class="caption">按点位直线距离计算，不代表官方招生范围或入学资格。</text>
     </view>
@@ -144,6 +144,7 @@ function distanceText(distance: number) {
           <button
             v-for="period in periods"
             :key="period.days"
+            class="period-button"
             :class="{ active: historyDays === period.days }"
             @click="emit('update:historyDays', period.days)"
           >{{ period.label }}</button>
@@ -154,7 +155,7 @@ function distanceText(distance: number) {
       <text v-else-if="historyError" class="error">{{ historyError }}</text>
       <view v-else-if="historyRows.length" class="history-list">
         <view v-for="row in historyRows" :key="row.key" class="history-row">
-          <text>{{ row.date }}</text><text>{{ row.price }}</text>
+          <text class="history-date">{{ row.date }}</text><text>{{ row.price }}</text>
         </view>
       </view>
       <text v-else class="caption">暂无价格历史。</text>
@@ -189,18 +190,18 @@ function distanceText(distance: number) {
 .price { color: #b64c39; font-family: serif; font-size: 29rpx; }
 .fact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10rpx; margin: 8rpx 0; }
 .fact-card { display: flex; flex-direction: column; gap: 5rpx; border: 1rpx solid rgba(23, 52, 58, 0.12); border-radius: 9rpx; background: #f6f1e7; padding: 14rpx; }
-.fact-grid text { color: #7a8587; font-size: 17rpx; }
+.fact-grid .fact-label { color: #7a8587; font-size: 17rpx; }
 .fact-grid .fact-value { color: #17343a; font-size: 21rpx; font-weight: 700; }
 .gap, .trend { color: #b64c39; font-weight: 700; }
 .section { display: flex; flex-direction: column; gap: 10rpx; margin-top: 8rpx; border-top: 1rpx solid rgba(23, 52, 58, 0.14); padding-top: 18rpx; }
 .section-title { color: #17343a; font-size: 23rpx; font-weight: 700; }
 .school-row, .history-row, .history-head { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; }
-.school-row text:last-child, .history-row text:first-child { color: #7a8587; font-size: 18rpx; }
+.school-distance, .history-date { color: #7a8587; font-size: 18rpx; }
 .caption { color: #8a8580; font-size: 18rpx; line-height: 1.55; }
 .periods { display: flex; gap: 5rpx; }
-.periods button { margin: 0; border: 1rpx solid rgba(23, 52, 58, 0.14); border-radius: 7rpx; background: transparent; padding: 8rpx 10rpx; color: #617074; font-size: 17rpx; line-height: 1; }
-.periods button::after { display: none; }
-.periods button.active { border-color: #b64c39; background: #b64c39; color: #fff; }
+.period-button { margin: 0; border: 1rpx solid rgba(23, 52, 58, 0.14); border-radius: 7rpx; background: transparent; padding: 8rpx 10rpx; color: #617074; font-size: 17rpx; line-height: 1; }
+.period-button::after { display: none; }
+.period-button.active { border-color: #b64c39; background: #b64c39; color: #fff; }
 .history-list { display: flex; flex-direction: column; }
 .history-row { border-bottom: 1rpx solid rgba(23, 52, 58, 0.08); padding: 9rpx 0; }
 .source-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); color: #7a8587; font-size: 18rpx; }

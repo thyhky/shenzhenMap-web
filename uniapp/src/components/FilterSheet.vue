@@ -65,20 +65,20 @@ function inputValue(event: unknown) {
     </view>
     <view class="price-row">
       <text>单价（万/㎡）</text>
-      <input type="number" :value="filters.minWan" @input="emit('update', { minWan: Number(inputValue($event)) })">
+      <input class="price-input" type="number" :value="filters.minWan" @input="emit('update', { minWan: Number(inputValue($event)) })">
       <text>—</text>
-      <input type="number" :value="filters.maxWan" @input="emit('update', { maxWan: Number(inputValue($event)) })">
+      <input class="price-input" type="number" :value="filters.maxWan" @input="emit('update', { maxWan: Number(inputValue($event)) })">
     </view>
-    <view class="switch-row"><text>只显示有价小区</text><switch color="#b64c39" :checked="filters.pricedOnly" @change="emit('update', { pricedOnly: !filters.pricedOnly })" /></view>
-    <view class="switch-row"><text>只看无官方参考价</text><switch color="#b64c39" :checked="filters.missingRefPrice" @change="emit('update', { missingRefPrice: !filters.missingRefPrice })" /></view>
+    <view class="switch-row"><text>只显示有价小区</text><switch class="switch-control" color="#b64c39" :checked="filters.pricedOnly" @change="emit('update', { pricedOnly: !filters.pricedOnly })" /></view>
+    <view class="switch-row"><text>只看无官方参考价</text><switch class="switch-control" color="#b64c39" :checked="filters.missingRefPrice" @change="emit('update', { missingRefPrice: !filters.missingRefPrice })" /></view>
     <view class="actions">
-      <button class="secondary" @click="emit('reset')">重置</button>
-      <button class="primary" @click="emit('apply')">应用筛选</button>
+      <button class="action-button secondary" @click="emit('reset')">重置</button>
+      <button class="action-button primary" @click="emit('apply')">应用筛选</button>
     </view>
     <view class="tools">
       <text class="tools-title">导出工具</text>
-      <button :disabled="csvLoading || !canExport" @click="emit('export-csv')">{{ csvLoading ? '正在准备…' : '租售比 + 最近学校 CSV' }}</button>
-      <button :disabled="heatmapLoading || !canExport" @click="emit('export-heatmap')">{{ heatmapLoading ? '正在生成…' : '当前行政区价格图' }}</button>
+      <button class="tool-button" :class="{ disabled: csvLoading || !canExport }" :disabled="csvLoading || !canExport" @click="emit('export-csv')">{{ csvLoading ? '正在准备…' : '租售比 + 最近学校 CSV' }}</button>
+      <button class="tool-button" :class="{ disabled: heatmapLoading || !canExport }" :disabled="heatmapLoading || !canExport" @click="emit('export-heatmap')">{{ heatmapLoading ? '正在生成…' : '当前行政区价格图' }}</button>
       <text v-if="!canExport" class="tools-note">筛选条件已修改，请先点击“应用筛选”。</text>
       <text class="tools-note">学校字段为同区最近点位估算，不代表官方学区或入学资格。</text>
     </view>
@@ -87,22 +87,22 @@ function inputValue(event: unknown) {
 
 <style scoped>
 .filter-sheet { display: grid; gap: 18rpx; padding: 24rpx 28rpx 40rpx; }
-.search-input, .picker-field, .price-row input { border: 1rpx solid rgba(23, 52, 58, 0.16); border-radius: 10rpx; background: #fff; padding: 16rpx; color: #17343a; font-size: 22rpx; }
+.search-input, .picker-field, .price-input { border: 1rpx solid rgba(23, 52, 58, 0.16); border-radius: 10rpx; background: #fff; padding: 16rpx; color: #17343a; font-size: 22rpx; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14rpx; }
 .price-row { display: flex; align-items: center; gap: 10rpx; color: #617074; font-size: 21rpx; }
-.price-row input { width: 105rpx; padding: 10rpx 6rpx; text-align: center; }
+.price-input { width: 105rpx; padding: 10rpx 6rpx; text-align: center; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; color: #40565a; font-size: 22rpx; }
-.switch-row switch { transform: scale(0.78); transform-origin: right center; }
+.switch-control { transform: scale(0.78); transform-origin: right center; }
 .actions { display: grid; grid-template-columns: 1fr 2fr; gap: 14rpx; margin-top: 8rpx; }
-.actions button { margin: 0; border-radius: 10rpx; font-size: 22rpx; }
-.actions button::after { display: none; }
+.action-button { margin: 0; border-radius: 10rpx; font-size: 22rpx; }
+.action-button::after { display: none; }
 .secondary { border: 1rpx solid rgba(23, 52, 58, 0.2); background: #fff; color: #617074; }
 .primary { border: 1rpx solid #b64c39; background: #c93632; color: #fff; }
 .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 10rpx; margin-top: 8rpx; border-top: 1rpx solid rgba(23, 52, 58, 0.14); padding-top: 18rpx; }
 .tools-title, .tools-note { grid-column: 1 / -1; }
 .tools-title { color: #17343a; font-size: 21rpx; font-weight: 700; }
-.tools button { margin: 0; border: 1rpx solid rgba(23, 52, 58, 0.2); border-radius: 9rpx; background: #f7f1e6; padding: 14rpx 9rpx; color: #40565a; font-size: 18rpx; line-height: 1.25; }
-.tools button::after { display: none; }
-.tools button[disabled] { opacity: 0.5; }
+.tool-button { margin: 0; border: 1rpx solid rgba(23, 52, 58, 0.2); border-radius: 9rpx; background: #f7f1e6; padding: 14rpx 9rpx; color: #40565a; font-size: 18rpx; line-height: 1.25; }
+.tool-button::after { display: none; }
+.tool-button.disabled { opacity: 0.5; }
 .tools-note { color: #8a8580; font-size: 17rpx; line-height: 1.5; }
 </style>
