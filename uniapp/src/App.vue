@@ -1,9 +1,5 @@
-<script setup lang="ts">
-import { onLaunch } from '@dcloudio/uni-app'
-
-onLaunch(() => {
-  console.info('Shenzhen Housing Atlas uni-app client started')
-})
+<script lang="ts">
+export default {}
 </script>
 
 <style>

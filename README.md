@@ -88,7 +88,7 @@ npm run db:setup:local
 
 ## uni-app 迁移工程
 
-`uniapp/` 是新的 Vue 3 + TypeScript 跨端客户端，迁移期间与现有 Web、原生小程序并行维护。共享页面、筛选、搜索、排行、详情、导出和地图适配均已完成，并可同时构建：
+`uniapp/` 是当前 Vue 3 + TypeScript 跨端客户端。共享页面、筛选、搜索、排行、详情、导出和地图适配均已完成；H5 已用于生产，旧 Web 与原生小程序暂作回滚保留：
 
 ```bash
 npm --prefix uniapp install
@@ -97,7 +97,7 @@ npm run uni:build:h5
 npm run uni:build:mp-weixin
 ```
 
-微信构建结果位于 `uniapp/dist/build/mp-weixin/`。完整计划与逐项验收状态见 [`docs/UNIAPP_MIGRATION_PLAN.md`](./docs/UNIAPP_MIGRATION_PLAN.md) 和 [`docs/UNIAPP_FEATURE_MATRIX.md`](./docs/UNIAPP_FEATURE_MATRIX.md)。在功能矩阵全部验收前，不替换当前生产客户端。
+微信构建结果位于 `uniapp/dist/build/mp-weixin/`。完整计划与逐项验收状态见 [`docs/UNIAPP_MIGRATION_PLAN.md`](./docs/UNIAPP_MIGRATION_PLAN.md) 和 [`docs/UNIAPP_FEATURE_MATRIX.md`](./docs/UNIAPP_FEATURE_MATRIX.md)。
 
 H5 独立预览地址：<https://shenzhen-estate-map-uni-preview.shenzhen-estate-map-cloudflare.workers.dev>。该地址不承载生产域名流量。
 
