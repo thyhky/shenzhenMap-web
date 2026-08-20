@@ -40,6 +40,7 @@ const emit = defineEmits<{
 }>()
 
 const componentInstance = getCurrentInstance()?.proxy
+const windowInfo = uni.getWindowInfo()
 let mapContext: UniNamespace.MapContext | null = null
 let regionTimer: ReturnType<typeof setTimeout> | null = null
 const lastViewport = ref<MapViewport | null>(null)
@@ -144,10 +145,9 @@ const polygonState = computed(() => {
     fillColor: string
     strokeWidth: number
   }> = []
-  const system = uni.getSystemInfoSync()
   const tolerance = Math.max(
-    (viewport.east - viewport.west) / Math.max(320, system.windowWidth),
-    (viewport.north - viewport.south) / Math.max(480, system.windowHeight),
+    (viewport.east - viewport.west) / Math.max(320, windowInfo.windowWidth),
+    (viewport.north - viewport.south) / Math.max(480, windowInfo.windowHeight),
   ) * 1.5
   const ringIsVisible = (ring: Position[]) => {
     const bounds = {
@@ -281,11 +281,10 @@ function mapTap(event: unknown) {
   const gcjLongitude = Number(detail?.longitude)
   if (!Number.isFinite(gcjLatitude) || !Number.isFinite(gcjLongitude)) return
   const { latitude, longitude } = gcj02ToWgs84(gcjLatitude, gcjLongitude)
-  const system = uni.getSystemInfoSync()
   const threshold = lastViewport.value
     ? Math.max(
-        (lastViewport.value.east - lastViewport.value.west) / Math.max(320, system.windowWidth),
-        (lastViewport.value.north - lastViewport.value.south) / Math.max(480, system.windowHeight),
+        (lastViewport.value.east - lastViewport.value.west) / Math.max(320, windowInfo.windowWidth),
+        (lastViewport.value.north - lastViewport.value.south) / Math.max(480, windowInfo.windowHeight),
       ) * 24
     : 0.04 / Math.pow(2, props.zoom - 10)
   let nearestSchool: SchoolFeature | null = null

@@ -443,7 +443,7 @@ async function renderHeatmapWeixin(data: HeatmapResponse) {
   heatmapCanvasVisible.value = true
   await nextTick()
   const result = await queryHeatmapCanvas()
-  const ratio = uni.getSystemInfoSync().pixelRatio || 1
+  const ratio = uni.getWindowInfo().pixelRatio || 1
   const backingScale = Math.min(ratio, 1365 / result.width, 1365 / result.height)
   result.node.width = Math.floor(result.width * backingScale)
   result.node.height = Math.floor(result.height * backingScale)
