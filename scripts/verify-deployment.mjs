@@ -33,11 +33,22 @@ const sourceSchools = JSON.parse(await readFile(resolve(sourceRoot, 'schools.geo
 const expectedEstates = sourceEstates.features.length
 const expectedPriced = sourceEstates.features.filter((feature) => feature.properties.has_price).length
 const expectedSchools = sourceSchools.features.length
+const localEstateObservedAt = sourceEstates.features.reduce(
+  (latest, feature) => feature.properties.source_observed_at > latest
+    ? feature.properties.source_observed_at
+    : latest,
+  '',
+)
+const localEstateObservedTime = Date.parse(localEstateObservedAt)
+if (!Number.isFinite(localEstateObservedTime)) throw new Error('Local estate snapshot has no valid source_observed_at timestamp')
 const guangmingEstate = sourceEstates.features.find((feature) => feature.properties.district === '光明区')
 if (!guangmingEstate) throw new Error('No Guangming estate exists in the source data')
 const health = await api('/api/health')
 const metaResponse = await request('/api/meta')
 const meta = await metaResponse.json()
+const remoteEstateObservedTime = Date.parse(meta.sourceObservedAt)
+const remoteEstateSnapshotIsNewer = Number.isFinite(remoteEstateObservedTime)
+  && remoteEstateObservedTime > localEstateObservedTime
 let cachedMetaResponse
 for (let attempt = 0; attempt < 4; attempt += 1) {
   cachedMetaResponse = await request('/api/meta')
@@ -99,6 +110,9 @@ const result = {
     sourceObservedAt: meta.sourceObservedAt,
     importedAt: meta.importedAt,
     recordChangedAt: meta.recordChangedAt,
+    localExpectedEstates: expectedEstates,
+    localObservedAt: localEstateObservedAt,
+    remoteSnapshotIsNewer: remoteEstateSnapshotIsNewer,
   },
   cache: {
     first: metaResponse.headers.get('X-Worker-Cache'),
@@ -181,8 +195,8 @@ console.log(JSON.stringify(result, null, 2))
 
 if (
   result.health !== 'ok' ||
-  result.meta.estates !== expectedEstates ||
-  result.meta.priced !== expectedPriced ||
+  (!remoteEstateSnapshotIsNewer && result.meta.estates !== expectedEstates) ||
+  (!remoteEstateSnapshotIsNewer && result.meta.priced !== expectedPriced) ||
   !result.meta.sourceObservedAt ||
   !result.meta.importedAt ||
   !result.meta.recordChangedAt ||

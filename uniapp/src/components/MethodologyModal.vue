@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { nextTick, onBeforeUnmount, onMounted } from 'vue'
 import type { MetaResponse } from '@/domain/types'
 
 defineProps<{ meta: MetaResponse }>()
 const emit = defineEmits<{ close: [] }>()
+let previousFocus: HTMLElement | null = null
 
 function statusText(status: string) {
   if (status === 'active') return '已接入'
@@ -19,23 +21,98 @@ function openUrl(url: string | null) {
   uni.setClipboardData({ data: url })
   // #endif
 }
+
+function dialogElement() {
+  // #ifdef H5
+  return document.querySelector<HTMLElement>('.method-card')
+  // #endif
+  return null
+}
+
+function focusableElements() {
+  const elements = Array.from(dialogElement()?.querySelectorAll<HTMLElement>(
+    'uni-button:not([disabled]), button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+  ) ?? [])
+  elements.forEach((element) => {
+    if (element.tagName !== 'UNI-BUTTON') return
+    if (!element.hasAttribute('role')) element.setAttribute('role', 'button')
+    if (!element.hasAttribute('tabindex')) element.tabIndex = 0
+  })
+  return elements.filter((element) => !element.hasAttribute('hidden') && element.getClientRects().length > 0)
+}
+
+function handleKeydown(event: KeyboardEvent) {
+  // #ifdef H5
+  if (event.defaultPrevented) return
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    emit('close')
+    return
+  }
+  if ((event.key === 'Enter' || event.key === ' ')
+    && event.target instanceof HTMLElement && event.target.tagName === 'UNI-BUTTON') {
+    event.preventDefault()
+    event.target.click()
+    return
+  }
+  if (event.key !== 'Tab') return
+  const focusable = focusableElements()
+  if (!focusable.length) {
+    event.preventDefault()
+    dialogElement()?.focus()
+    return
+  }
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+  // #endif
+}
+
+onMounted(async () => {
+  // #ifdef H5
+  previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  document.addEventListener('keydown', handleKeydown)
+  await nextTick()
+  focusableElements()[0]?.focus()
+  // #endif
+})
+
+onBeforeUnmount(() => {
+  // #ifdef H5
+  document.removeEventListener('keydown', handleKeydown)
+  previousFocus?.focus()
+  // #endif
+})
 </script>
 
 <template>
   <view class="method-mask" @click="emit('close')">
-    <view class="method-card" @click.stop>
-      <view class="method-head"><text>数据来源与方法</text><button class="method-close" @click="emit('close')">关闭</button></view>
+    <view
+      class="method-card"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="methodology-title"
+      tabindex="-1"
+      @click.stop
+    >
+      <view class="method-head"><text id="methodology-title">数据来源与方法</text><button class="method-close" role="button" tabindex="0" @click="emit('close')">关闭</button></view>
       <scroll-view scroll-y class="method-scroll">
         <text class="disclaimer">{{ meta.catalog.disclaimer }}</text>
         <view v-for="scope in meta.catalog.scopes" :key="scope.id" class="scope-card">
           <view class="scope-head"><text>{{ scope.label }}</text><text :class="['status', scope.status]">{{ statusText(scope.status) }}</text></view>
-          <button v-if="scope.source" class="source" @click="openUrl(scope.source.url)">{{ scope.source.name }}</button>
+          <button v-if="scope.source" class="source" role="button" tabindex="0" @click="openUrl(scope.source.url)">{{ scope.source.name }}</button>
           <text v-if="scope.sourceVersion">来源版本：{{ scope.sourceVersion }}</text>
           <text v-if="scope.sourceObservedAt">来源观测：{{ scope.sourceObservedAt }}</text>
           <text v-if="scope.importedAt">平台导入：{{ scope.importedAt }}</text>
           <text v-if="scope.licenseNote">许可说明：{{ scope.licenseNote }}</text>
           <text v-if="scope.disclaimer" class="scope-note">{{ scope.disclaimer }}</text>
-          <button v-if="scope.termsUrl" class="terms" @click="openUrl(scope.termsUrl)">查看服务条款</button>
+          <button v-if="scope.termsUrl" class="terms" role="button" tabindex="0" @click="openUrl(scope.termsUrl)">查看服务条款</button>
         </view>
         <text class="version">数据版本：{{ meta.catalog.dataVersion || '未知' }}</text>
       </scroll-view>

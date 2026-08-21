@@ -16,8 +16,8 @@ const emit = defineEmits<{ methodology: [] }>()
       <text class="api-badge">UNI</text>
     </view>
     <view class="stats">
-      <text>小区 {{ total }}</text>
-      <text>均价 {{ averagePrice ? `${(averagePrice / 10000).toFixed(1)}万` : '-' }}</text>
+      <text class="total-stat">小区 {{ total }}</text>
+      <text class="average-stat">均价 {{ averagePrice ? `${(averagePrice / 10000).toFixed(1)}万` : '-' }}</text>
       <text v-if="observedAt" class="observed">{{ observedAt.slice(0, 10) }}</text>
       <text v-if="loading">更新中</text>
       <button class="methodology-button" @click="emit('methodology')">数据说明</button>
@@ -60,5 +60,14 @@ const emit = defineEmits<{ methodology: [] }>()
   .title { font-size: 27rpx; }
   .stats { min-width: 0; justify-content: flex-end; gap: 8rpx; font-size: 17rpx; }
   .observed { display: none; }
+}
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 600px) {
+  .header-card { top: calc(4px + env(safe-area-inset-top)); right: 8px; left: 8px; gap: 8px; border-radius: 7px; padding: 4px 8px; box-shadow: 0 4px 14px rgba(18, 42, 46, 0.14); }
+  .brand-line { gap: 5px; }
+  .title { font-size: 14px; }
+  .api-badge { border-width: 1px; padding: 1px 4px; font-size: 8px; }
+  .stats { min-width: 0; justify-content: flex-end; gap: 8px; font-size: 10px; }
+  .observed { display: none; }
+  .methodology-button { padding: 4px; font-size: 10px; }
 }
 </style>

@@ -51,19 +51,19 @@ function rankingValue(item: RankingItem) {
 
 <template>
   <view class="results-sheet">
-    <view class="tabs">
-      <button class="tab-button" :class="{ active: mode === 'results' }" @click="emit('update:mode', 'results')">范围结果</button>
-      <button class="tab-button" :class="{ active: mode === 'ranking' }" @click="emit('update:mode', 'ranking')">小区榜单</button>
+    <view class="tabs" role="tablist" aria-label="结果类型">
+      <button class="tab-button" :class="{ active: mode === 'results' }" role="tab" :aria-selected="mode === 'results'" @click="emit('update:mode', 'results')">范围结果</button>
+      <button class="tab-button" :class="{ active: mode === 'ranking' }" role="tab" :aria-selected="mode === 'ranking'" @click="emit('update:mode', 'ranking')">小区榜单</button>
     </view>
 
     <template v-if="mode === 'results'">
       <view class="sorts">
-        <button class="sort-button" :class="{ active: sort === 'price-desc' }" @click="emit('update:sort', 'price-desc')">价格从高到低</button>
-        <button class="sort-button" :class="{ active: sort === 'price-asc' }" @click="emit('update:sort', 'price-asc')">价格从低到高</button>
-        <button class="sort-button" :class="{ active: sort === 'rent-yield' }" @click="emit('update:sort', 'rent-yield')">租售比</button>
+        <button class="sort-button" :class="{ active: sort === 'price-desc' }" :aria-pressed="sort === 'price-desc'" @click="emit('update:sort', 'price-desc')">价格从高到低</button>
+        <button class="sort-button" :class="{ active: sort === 'price-asc' }" :aria-pressed="sort === 'price-asc'" @click="emit('update:sort', 'price-asc')">价格从低到高</button>
+        <button class="sort-button" :class="{ active: sort === 'rent-yield' }" :aria-pressed="sort === 'rent-yield'" @click="emit('update:sort', 'rent-yield')">租售比</button>
       </view>
-      <input v-model="listKeyword" class="list-search" placeholder="仅搜索已加载结果" />
-      <view class="summary">已加载 {{ results.length }} / {{ total }}<text v-if="hasListKeyword"> · 当前匹配 {{ visibleResults.length }}</text></view>
+      <input v-model="listKeyword" class="list-search" placeholder="仅搜索已加载结果" aria-label="搜索已加载结果" />
+      <view class="summary" aria-live="polite">已加载 {{ results.length }} / {{ total }}<text v-if="hasListKeyword"> · 当前匹配 {{ visibleResults.length }}</text></view>
       <view v-if="loading && !results.length" class="empty">正在加载结果…</view>
       <view v-else-if="!visibleResults.length" class="empty">{{ listKeyword ? '已加载结果中没有匹配' : '当前筛选没有结果' }}</view>
       <template v-else>
@@ -79,8 +79,8 @@ function rankingValue(item: RankingItem) {
 
     <template v-else>
       <view class="sorts ranking-sorts">
-        <button class="sort-button" :class="{ active: rankingSort === 'rentYield' }" @click="emit('update:ranking-sort', 'rentYield')">租售比排行</button>
-        <button class="sort-button" :class="{ active: rankingSort === 'price' }" @click="emit('update:ranking-sort', 'price')">价格排行</button>
+        <button class="sort-button" :class="{ active: rankingSort === 'rentYield' }" :aria-pressed="rankingSort === 'rentYield'" @click="emit('update:ranking-sort', 'rentYield')">租售比排行</button>
+        <button class="sort-button" :class="{ active: rankingSort === 'price' }" :aria-pressed="rankingSort === 'price'" @click="emit('update:ranking-sort', 'price')">价格排行</button>
       </view>
       <view class="summary">已加载 {{ ranking.length }} / {{ rankingTotal }}</view>
       <view v-if="rankingLoading && !ranking.length" class="empty">正在加载榜单…</view>
@@ -106,7 +106,7 @@ function rankingValue(item: RankingItem) {
 .tab-button, .sort-button { flex: 1; margin: 0; border: 1rpx solid rgba(23, 52, 58, 0.14); border-radius: 8rpx; background: transparent; padding: 11rpx 7rpx; color: #617074; font-size: 18rpx; line-height: 1.1; }
 .tab-button::after, .sort-button::after, .load-more::after { display: none; }
 .tab-button.active, .sort-button.active { border-color: #17343a; background: #17343a; color: #fff; }
-.list-search { box-sizing: border-box; width: 100%; height: 64rpx; margin-top: 12rpx; border: 1rpx solid rgba(23, 52, 58, 0.16); border-radius: 9rpx; background: #fffdf8; padding: 0 18rpx; color: #17343a; font-size: 20rpx; }
+.list-search { box-sizing: border-box; width: 100%; height: 40px; min-height: 40px; margin-top: 12rpx; border: 1rpx solid rgba(23, 52, 58, 0.16); border-radius: 9rpx; background: #fffdf8; padding: 0 12px; color: #17343a; font-size: 14px; line-height: 40px; }
 .summary { border-bottom: 1rpx solid rgba(23, 52, 58, 0.14); padding: 13rpx 0; color: #617074; font-size: 20rpx; }
 .result-row { display: flex; align-items: center; justify-content: space-between; gap: 14rpx; width: 100%; margin: 0; border: 0; border-bottom: 1rpx solid rgba(23, 52, 58, 0.1); border-radius: 0; background: transparent; padding: 20rpx 0; text-align: left; line-height: 1.3; }
 .result-row::after { display: none; }

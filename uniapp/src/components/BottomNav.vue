@@ -64,4 +64,9 @@ const emit = defineEmits<{
 .nav-item:last-child { border-right: 0; }
 .nav-item.active { color: #b64c39; }
 .meta { max-width: 190rpx; overflow: hidden; color: #7a8587; font-size: 17rpx; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 600px) {
+  .bottom-nav { min-height: calc(42px + env(safe-area-inset-bottom)); }
+  .nav-item { flex-direction: row; gap: 5px; font-size: 13px; line-height: 1; }
+  .meta { max-width: 120px; font-size: 10px; }
+}
 </style>

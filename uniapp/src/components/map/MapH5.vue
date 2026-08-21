@@ -27,10 +27,14 @@ const props = defineProps<{
   showSchoolZones: boolean
   focusBounds: Bounds | null
   focusRevision: number
+  selected: MapSelection | null
+  selectionRevision: number
+  showSelectionPopup: boolean
 }>()
 
 const emit = defineEmits<{
   select: [item: MapSelection]
+  details: []
   'viewport-change': [viewport: MapViewport]
 }>()
 
@@ -40,6 +44,7 @@ let pointsLayer: L.LayerGroup | null = null
 let boundaryLayer: L.GeoJSON | null = null
 let schoolLayer: L.LayerGroup | null = null
 let schoolZoneLayer: L.GeoJSON | null = null
+let selectionLayer: L.LayerGroup | null = null
 let viewportTimer: ReturnType<typeof setTimeout> | null = null
 let resizeObserver: ResizeObserver | null = null
 
@@ -56,7 +61,7 @@ function priceText(price: number | null) {
   return price ? `${(price / 10000).toFixed(1)}万/㎡` : '暂无价格'
 }
 
-function popupContent(title: string, lines: string[]) {
+function popupContent(title: string, lines: string[], action?: { label: string; run: () => void }) {
   const root = document.createElement('div')
   root.className = 'uni-map-popup'
   const heading = document.createElement('strong')
@@ -67,6 +72,17 @@ function popupContent(title: string, lines: string[]) {
     row.textContent = line
     root.appendChild(row)
   })
+  if (action) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'uni-map-popup-action'
+    button.textContent = action.label
+    button.addEventListener('click', (event) => {
+      event.stopPropagation()
+      action.run()
+    })
+    root.appendChild(button)
+  }
   return root
 }
 
@@ -85,11 +101,6 @@ function drawPoints() {
         fillColor: priceColor(item.avgPrice),
         fillOpacity: 0.55,
       })
-      marker.bindPopup(popupContent(`${item.count} 个小区`, [
-        `${item.pricedCount} 个有有效价格`,
-        `均价 ${priceText(item.avgPrice)}`,
-        '继续放大查看具体小区',
-      ]))
       marker.bindTooltip(String(item.count), {
         permanent: true,
         direction: 'center',
@@ -111,10 +122,6 @@ function drawPoints() {
       fillColor: priceColor(item.price),
       fillOpacity: 0.85,
     })
-    marker.bindPopup(popupContent(item.name, [
-      priceText(item.price),
-      `${item.district} · ${item.street}`,
-    ]))
     marker.on('click', () => emit('select', item))
     if (currentMap.getZoom() >= 15) {
       marker.bindTooltip(item.name, {
@@ -158,11 +165,6 @@ function drawSchools() {
       icon: schoolIcon(school.properties.level),
       riseOnHover: true,
     })
-    marker.bindPopup(popupContent(school.properties.name, [
-      `${school.properties.levelLabel} · ${school.properties.district}`,
-      `官方招生社区 ${school.properties.zones.length} 个`,
-      '点击查看招生范围与咨询电话',
-    ]))
     marker.on('click', () => emit('select', school))
     if (currentMap.getZoom() >= 15) {
       marker.bindTooltip(school.properties.name, {
@@ -181,6 +183,87 @@ function drawSchoolZones() {
   if (props.showSchoolZones && props.schoolZones) {
     schoolZoneLayer.addData(props.schoolZones as unknown as GeoJSON.FeatureCollection)
   }
+}
+
+function selectionCenter(item: MapSelection): L.LatLngExpression | null {
+  if ('kind' in item) return [item.lat, item.lng]
+  if (item.geometry.type === 'Point') {
+    const [longitude, latitude] = item.geometry.coordinates
+    return [latitude, longitude]
+  }
+  const bounds = L.geoJSON(item as unknown as GeoJSON.Feature).getBounds()
+  return bounds.isValid() ? bounds.getCenter() : null
+}
+
+function selectionDetails(item: MapSelection) {
+  if ('kind' in item) {
+    if (item.kind === 'cluster') {
+      return {
+        title: `${item.count} 个小区`,
+        lines: [
+          `${item.pricedCount} 个有有效价格`,
+          `均价 ${priceText(item.avgPrice)}`,
+          '地图已放大，可继续选择具体小区',
+        ],
+        hasDetails: false,
+      }
+    }
+    return {
+      title: item.name,
+      lines: [
+        `均价 ${priceText(item.price)}`,
+        `租售比 ${item.rentYield === null ? '暂无数据' : `${item.rentYield.toFixed(2)}%`}`,
+        `${item.district} · ${item.street}`,
+      ],
+      hasDetails: true,
+    }
+  }
+  return {
+    title: item.properties.name,
+    lines: [
+      `${item.properties.levelLabel} · ${item.properties.district}`,
+      `官方招生社区 ${item.properties.zones.length} 个`,
+      item.geometry.type === 'Point'
+        ? '查看招生范围与咨询电话'
+        : 'method' in item.properties && item.properties.method === 'official-boundary'
+          ? '官方划片边界'
+          : '近似招生范围',
+    ],
+    hasDetails: true,
+  }
+}
+
+function drawSelection() {
+  if (!map || !selectionLayer) return
+  const targetLayer = selectionLayer
+  targetLayer.clearLayers()
+  if (!props.selected) return
+  const center = selectionCenter(props.selected)
+  if (!center) return
+  const details = selectionDetails(props.selected)
+  const marker = L.circleMarker(center, {
+    pane: 'selectedPoint',
+    radius: 11,
+    color: '#ffffff',
+    weight: 3,
+    fillColor: '#b64c39',
+    fillOpacity: 0.8,
+    interactive: false,
+  }).addTo(targetLayer)
+  if (!props.showSelectionPopup) return
+  marker.bindPopup(popupContent(
+    details.title,
+    details.lines,
+    details.hasDetails ? { label: '查看详情', run: () => emit('details') } : undefined,
+  ), {
+    className: 'uni-selection-popup',
+    closeButton: true,
+    closeOnClick: false,
+    autoClose: false,
+    autoPanPaddingTopLeft: [24, 88],
+    autoPanPaddingBottomRight: [24, 130],
+  })
+  marker.openPopup()
 }
 
 function emitViewport() {
@@ -207,6 +290,10 @@ watch(() => props.items, drawPoints)
 watch([() => props.boundaries, () => props.showBoundaries], drawBoundaries)
 watch([() => props.schools, () => props.showSchools], drawSchools)
 watch([() => props.schoolZones, () => props.showSchoolZones], drawSchoolZones)
+watch(
+  [() => props.selected, () => props.selectionRevision, () => props.showSelectionPopup],
+  drawSelection,
+)
 watch(() => props.focusRevision, () => {
   if (!map || !props.focusBounds) return
   const bounds = props.focusBounds
@@ -250,6 +337,9 @@ onMounted(async () => {
   map.createPane('streetBoundaries').style.zIndex = '410'
   map.createPane('schoolZones').style.zIndex = '420'
   map.createPane('estatePoints').style.zIndex = '450'
+  const selectedPane = map.createPane('selectedPoint')
+  selectedPane.style.zIndex = '480'
+  selectedPane.style.pointerEvents = 'none'
   boundaryLayer = L.geoJSON(undefined, {
     pane: 'streetBoundaries',
     style: {
@@ -284,11 +374,6 @@ onMounted(async () => {
     onEachFeature: (feature, layer) => {
       const zone = feature as unknown as SchoolZoneFeature
       const details = zone.properties
-      layer.bindPopup(popupContent(details.name, [
-        `${details.levelLabel} · ${details.district}`,
-        `覆盖 ${details.zones.length} 个招生社区`,
-        details.method === 'official-boundary' ? '官方划片边界' : '基于招生社区名称的近似范围',
-      ]))
       layer.bindTooltip(details.name, { sticky: true, className: 'uni-school-label' })
       layer.on('click', () => {
         const school = props.schools?.features.find((item) => item.properties.id === details.schoolId)
@@ -298,6 +383,7 @@ onMounted(async () => {
   }).addTo(map)
   pointsLayer = L.layerGroup().addTo(map)
   schoolLayer = L.layerGroup().addTo(map)
+  selectionLayer = L.layerGroup().addTo(map)
   map.on('moveend', scheduleViewport)
   map.on('zoomend', () => {
     drawPoints()
@@ -310,6 +396,7 @@ onMounted(async () => {
   drawBoundaries()
   drawSchools()
   drawSchoolZones()
+  drawSelection()
   emitViewport()
 })
 
@@ -322,6 +409,7 @@ onBeforeUnmount(() => {
   boundaryLayer = null
   schoolLayer = null
   schoolZoneLayer = null
+  selectionLayer = null
 })
 </script>
 
@@ -338,6 +426,10 @@ onBeforeUnmount(() => {
 :global(.uni-map-popup) { display: grid; gap: 3px; min-width: 150px; color: #17343a; }
 :global(.uni-map-popup strong) { font-size: 15px; }
 :global(.uni-map-popup span) { color: #53666a; font-size: 12px; }
+:global(.uni-map-popup-action) { min-height: 32px; margin: 5px 0 0; border: 0; border-radius: 5px; background: #17343a; padding: 7px 11px; color: #fff; font: 700 12px/1.2 "Microsoft YaHei", sans-serif; cursor: pointer; }
+:global(.uni-map-popup-action:focus-visible) { outline: 2px solid #b64c39; outline-offset: 2px; }
+:global(.uni-selection-popup .leaflet-popup-content-wrapper) { border: 1px solid rgba(23, 52, 58, 0.15); border-radius: 8px; background: #fffdf8; box-shadow: 0 8px 28px rgba(18, 42, 46, 0.2); }
+:global(.uni-selection-popup .leaflet-popup-tip) { background: #fffdf8; }
 :global(.uni-estate-label) { border: 1px solid rgba(23, 52, 58, 0.16) !important; border-radius: 5px !important; background: rgba(253, 249, 240, 0.92) !important; color: #17343a !important; box-shadow: none !important; }
 :global(.uni-estate-label::before) { display: none; }
 :global(.uni-cluster-count) { border: 0 !important; background: transparent !important; color: #fff !important; box-shadow: none !important; font: 700 10px/1 Consolas, monospace !important; text-shadow: 0 1px 2px rgba(16, 43, 46, 0.45); pointer-events: none !important; }

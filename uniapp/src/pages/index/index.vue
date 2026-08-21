@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, nextTick, reactive, ref } from 'vue'
+import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import AppHeader from '@/components/AppHeader.vue'
 import BottomNav from '@/components/BottomNav.vue'
@@ -90,6 +90,7 @@ const mapZoom = ref(initialViewport.zoom)
 const layerRevision = ref(0)
 const focusBounds = ref<Bounds | null>(null)
 const focusRevision = ref(0)
+const selectionRevision = ref(0)
 const resultsMode = ref<'results' | 'ranking'>('results')
 const rankingSort = ref<RankingSort>('rentYield')
 const rankingItems = ref<RankingItem[]>([])
@@ -101,6 +102,73 @@ const rankingLoadingMore = ref(false)
 const desktopFiltersOpen = ref(true)
 const desktopRightOpen = ref(true)
 const desktopRightTab = ref<'results' | 'detail'>('results')
+const desktopLayout = ref(false)
+const compactLandscape = ref(false)
+const chromeHidden = ref(false)
+// #ifdef H5
+const desktopMedia = window.matchMedia('(min-width: 901px)')
+const compactLandscapeMedia = window.matchMedia('(max-width: 900px) and (orientation: landscape) and (max-height: 600px)')
+let chromeTimer: ReturnType<typeof setTimeout> | null = null
+let lastChromeActivity = 0
+
+function clearChromeTimer() {
+  if (chromeTimer) clearTimeout(chromeTimer)
+  chromeTimer = null
+}
+
+function armChromeTimer() {
+  clearChromeTimer()
+  if (!compactLandscape.value) return
+  chromeTimer = setTimeout(() => {
+    if (!activeSheet.value && !showMethodology.value) chromeHidden.value = true
+  }, 60_000)
+}
+
+function registerChromeActivity() {
+  if (!compactLandscape.value) return
+  const now = Date.now()
+  if (!chromeHidden.value && now - lastChromeActivity < 1000) return
+  lastChromeActivity = now
+  chromeHidden.value = false
+  armChromeTimer()
+}
+
+function updateDesktopLayout() {
+  desktopLayout.value = desktopMedia.matches
+  if (desktopLayout.value) activeSheet.value = ''
+}
+
+function updateCompactLandscape() {
+  compactLandscape.value = compactLandscapeMedia.matches
+  chromeHidden.value = false
+  if (compactLandscape.value) {
+    lastChromeActivity = Date.now()
+    armChromeTimer()
+  } else clearChromeTimer()
+}
+
+onMounted(() => {
+  updateDesktopLayout()
+  updateCompactLandscape()
+  desktopMedia.addEventListener('change', updateDesktopLayout)
+  compactLandscapeMedia.addEventListener('change', updateCompactLandscape)
+  window.addEventListener('pointermove', registerChromeActivity, { passive: true })
+  window.addEventListener('pointerdown', registerChromeActivity, { passive: true })
+  window.addEventListener('touchstart', registerChromeActivity, { passive: true })
+  window.addEventListener('wheel', registerChromeActivity, { passive: true })
+  window.addEventListener('keydown', registerChromeActivity)
+})
+onBeforeUnmount(() => {
+  clearChromeTimer()
+  desktopMedia.removeEventListener('change', updateDesktopLayout)
+  compactLandscapeMedia.removeEventListener('change', updateCompactLandscape)
+  window.removeEventListener('pointermove', registerChromeActivity)
+  window.removeEventListener('pointerdown', registerChromeActivity)
+  window.removeEventListener('touchstart', registerChromeActivity)
+  window.removeEventListener('wheel', registerChromeActivity)
+  window.removeEventListener('keydown', registerChromeActivity)
+})
+// #endif
 const visibleLayers = reactive<Record<MapLayerName, boolean>>({ boundaries: false, schools: false, zones: false })
 const layerLoading = reactive<Record<MapLayerName, boolean>>({ boundaries: false, schools: false, zones: false })
 const { draft, applied, updateDraft, applyDraft, resetDraft, setAppliedSort } = useEstateFilters()
@@ -136,6 +204,14 @@ const desktopWorkspaceClass = computed(() => ({
   'right-hidden': !desktopRightOpen.value,
   'both-hidden': !desktopFiltersOpen.value && !desktopRightOpen.value,
 }))
+const pageShellClass = computed(() => ({
+  'compact-landscape': compactLandscape.value,
+  'chrome-hidden': chromeHidden.value,
+}))
+const showSelectionPopup = computed(() => (
+  activeSheet.value !== 'detail'
+  && (!desktopLayout.value || !desktopRightOpen.value || desktopRightTab.value !== 'detail')
+))
 
 function toggleSheet(sheet: Exclude<SheetName, ''>) {
   activeSheet.value = activeSheet.value === sheet ? '' : sheet
@@ -160,6 +236,7 @@ function resetEstateDetail() {
 function setSelection(item: MapSelection) {
   if (selectedEstateId(selected.value) !== selectedEstateId(item)) resetEstateDetail()
   selected.value = item
+  selectionRevision.value += 1
   activeSheet.value = ''
   if (desktopRightTab.value === 'detail') ensureSelectedDetailLoaded()
 }
@@ -551,8 +628,9 @@ function ensureSelectedDetailLoaded() {
 }
 
 function openDetails() {
-  activeSheet.value = 'detail'
+  activeSheet.value = desktopLayout.value ? '' : 'detail'
   desktopRightTab.value = 'detail'
+  desktopRightOpen.value = true
   ensureSelectedDetailLoaded()
 }
 
@@ -637,7 +715,7 @@ onLoad(async () => {
 </script>
 
 <template>
-  <view class="page-shell">
+  <view class="page-shell" :class="pageShellClass">
     <AppHeader
       :total="snapshot?.stats.total ?? meta?.totals.estates ?? 0"
       :average-price="snapshot?.stats.averagePrice ?? null"
@@ -645,6 +723,16 @@ onLoad(async () => {
       :observed-at="snapshot?.sourceObservedAt ?? meta?.sourceObservedAt ?? null"
       @methodology="showMethodology = true"
     />
+
+    <!-- #ifdef H5 -->
+    <view
+      v-if="chromeHidden"
+      class="chrome-reveal"
+      aria-label="显示页面导航"
+      @pointerdown.stop.prevent="registerChromeActivity"
+      @touchstart.stop.prevent="registerChromeActivity"
+    />
+    <!-- #endif -->
 
     <!-- #ifdef H5 -->
     <view class="desktop-workspace" :class="desktopWorkspaceClass">
@@ -681,7 +769,11 @@ onLoad(async () => {
           :show-school-zones="visibleLayers.zones"
           :focus-bounds="focusBounds"
           :focus-revision="focusRevision"
+          :selected="selected"
+          :selection-revision="selectionRevision"
+          :show-selection-popup="showSelectionPopup"
           @select="selectMapItem"
+          @details="openDetails"
           @viewport-change="updateViewport"
         />
         <LayerControl
@@ -690,12 +782,6 @@ onLoad(async () => {
           :zones="visibleLayers.zones"
           :loading="layerLoading"
           @toggle="toggleLayer"
-        />
-        <MapBriefCard
-          v-if="selected && !activeSheet"
-          :item="selected"
-          @close="clearSelection"
-          @details="openDetails"
         />
         <view class="desktop-reopen">
           <button v-if="!desktopFiltersOpen" @click="desktopFiltersOpen = true">打开筛选</button>
@@ -859,6 +945,20 @@ onLoad(async () => {
 /* #ifdef H5 */
 .desktop-workspace, .map-stage { position: absolute; inset: 0; overflow: hidden; }
 .desktop-panel, .desktop-reopen { display: none; }
+.page-shell > .header-card, .page-shell > .bottom-nav { transition: transform 240ms ease, opacity 180ms ease; }
+.chrome-reveal { position: fixed; z-index: 9; inset: 0; background: transparent; touch-action: none; }
+.page-shell.chrome-hidden > .header-card { opacity: 0; pointer-events: none; transform: translate3d(0, calc(-100% - 24px), 0); }
+.page-shell.chrome-hidden > .bottom-nav { opacity: 0; pointer-events: none; transform: translate3d(0, calc(100% + env(safe-area-inset-bottom)), 0); }
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 600px) {
+  .page-shell.compact-landscape .layer-control { top: calc(42px + env(safe-area-inset-top)); right: 8px; transition: top 240ms ease; }
+  .page-shell.compact-landscape.chrome-hidden .layer-control { top: calc(8px + env(safe-area-inset-top)); }
+  .page-shell.compact-landscape .map-h5 .leaflet-control-attribution { margin-bottom: calc(42px + env(safe-area-inset-bottom)) !important; transition: margin-bottom 240ms ease; }
+  .page-shell.compact-landscape .map-h5 .leaflet-control-zoom { margin-bottom: calc(52px + env(safe-area-inset-bottom)) !important; transition: margin-bottom 240ms ease; }
+  .page-shell.compact-landscape.chrome-hidden .map-h5 .leaflet-control-attribution { margin-bottom: 0 !important; }
+  .page-shell.compact-landscape.chrome-hidden .map-h5 .leaflet-control-zoom { margin-bottom: 10px !important; }
+  .page-shell.compact-landscape > .error-toast { bottom: calc(50px + env(safe-area-inset-bottom)); }
+  .page-shell.compact-landscape.chrome-hidden > .error-toast { bottom: calc(10px + env(safe-area-inset-bottom)); }
+}
 @media (min-width: 901px) {
   .page-shell { display: grid; grid-template-rows: 68px minmax(0, 1fr); gap: 10px; box-sizing: border-box; height: 100vh; background: #f1efe9; padding: 12px; }
   .page-shell > .header-card { position: relative; z-index: 5; inset: auto; border-radius: 9px; padding: 10px 16px; box-shadow: 0 8px 30px rgba(24, 43, 47, 0.08); }
@@ -876,7 +976,6 @@ onLoad(async () => {
   .desktop-tabs .desktop-close { margin-left: auto; }
   .map-stage { position: relative; min-width: 0; min-height: 0; border: 1px solid rgba(23, 52, 58, 0.14); border-radius: 9px; background: #d8d1c3; box-shadow: 0 8px 28px rgba(24, 43, 47, 0.08); }
   .map-stage .layer-control { position: absolute; top: 12px; right: 12px; }
-  .map-stage .brief-card { position: absolute; right: 14px; bottom: 14px; left: 14px; }
   .desktop-reopen { position: absolute; z-index: 7; top: 12px; left: 12px; display: flex; gap: 6px; }
   .desktop-reopen button { margin: 0; border: 1px solid rgba(23, 52, 58, 0.18); border-radius: 6px; background: rgba(250, 246, 237, 0.96); padding: 7px 10px; color: #17343a; font-size: 11px; line-height: 1; box-shadow: 0 4px 14px rgba(18, 42, 46, 0.12); }
   .desktop-reopen button::after { display: none; }

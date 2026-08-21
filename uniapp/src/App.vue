@@ -21,4 +21,15 @@ scroll-view,
 map {
   box-sizing: border-box;
 }
+
+/* #ifdef H5 */
+button:focus-visible,
+input:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="dialog"]:focus-visible {
+  outline: 2px solid #b64c39;
+  outline-offset: 2px;
+}
+/* #endif */
 </style>
