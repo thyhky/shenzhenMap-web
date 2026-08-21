@@ -2,9 +2,11 @@
 
 独立工程（`C:\code\Codex\shenzhenMap-web`），与数据车间解耦。前端只负责交互和展示，小区及街道数据存储在 Cloudflare D1，由 Worker 按当前地图范围提供。
 
-本仓库公开的是应用源码、数据处理结构和 Worker 资源配置，不包含真实小区、价格、学校、学区快照、生成 SQL、Cloudflare 登录凭据或其他密钥。公开仓库不能直接复现当前线上数据，需要准备自己的数据快照和 Cloudflare 资源。
+项目状态：主体功能开发已完成，`1.2.1` 正在完成发布前回归，之后进入维护期。当前线上状态、待办和恢复开发步骤见 [`docs/PROJECT_HANDOFF.md`](./docs/PROJECT_HANDOFF.md)。
 
-数据车间 `fetch_house_prices`（私有仓库）已提交全部主数据与 `webmap/` 构建产物（见下文"从 GitHub 重建"），因此从 GitHub 拉取两个仓库后可以重建完整本地工作区。
+本仓库公开应用源码、数据处理结构和非密钥 Worker 资源配置，不包含真实小区/价格/学校/学区快照、生成 SQL、Cloudflare 登录凭据或其他密钥。公开仓库不能直接复现当前线上数据，需要准备自己的数据快照和 Cloudflare 资源。
+
+数据车间 `fetch_house_prices`（私有仓库）保存可重建基线；每日生成的最新主数据与 `webmap/` 产物需要另行提交或归档。精确恢复当前生产状态还需要最新 D1 备份和本地生产配置，详见阶段性交付摘要。
 
 ## 架构
 
@@ -20,29 +22,29 @@
 
 需要 Node.js 24 或更高版本。建议使用 lockfile 安装依赖：
 
-先复制 `wrangler.example.jsonc` 为本地 `wrangler.jsonc`，填写自己的 Worker 名称和 D1 配置；本地数据文件请参见 `data/README.md`。
-
-完整本地预览使用 Wrangler Worker、Assets 和本地 D1：
+当前 uni-app H5 前端默认通过开发代理访问生产 API：
 
 ```bash
 npm ci
-npm run db:setup:local
-npm run dev
+npm --prefix uniapp ci
+npm --prefix uniapp run dev:h5
 ```
 
-访问 `http://127.0.0.1:8787`。`npm run dev` 会先构建前端，再启动本地 Worker。
-
-如果只调试 Vue 页面，可拆成两个终端：
+如需同时调试本地 Worker/D1，先复制 `wrangler.example.jsonc` 为本地 `wrangler.jsonc`，填写 Worker 和 D1 配置，运行 Worker，并把 `uniapp/vite.config.ts` 的开发代理临时指向 `http://127.0.0.1:8787`：
 
 ```bash
-# 终端一：本地 Worker + D1 API
+npm run db:setup:local
+npm run build          # 为 wrangler.example.jsonc 创建其要求的旧 Web Assets 目录
 npm run dev:worker
-
-# 终端二：Vite 热更新页面，访问 http://127.0.0.1:5173
-npm run dev:web
 ```
 
-Vite 已将 `/api` 代理到 `http://127.0.0.1:8787`。
+本地数据文件参见 `data/README.md`。`npm run dev` 和 `npm run dev:web` 使用根目录 `src/`，仅用于旧 Web 回滚版本调试，不是当前 uni-app 前端入口。
+
+旧 Web 与本地 Worker 的完整预览仍可运行：
+
+```bash
+npm run dev
+```
 
 ### 本地数据调试
 
@@ -92,8 +94,10 @@ npm run db:setup:local
 
 `uniapp/` 是当前 Vue 3 + TypeScript 跨端客户端。共享页面、筛选、搜索、排行、详情、导出和地图适配均已完成；H5 已用于生产，旧 Web 与原生小程序暂作回滚保留：
 
+当前生产 H5 仍是已验收的 `1.2.0` 基线；GitHub `1.2.1` 已通过本地自动构建，尚待预览浏览器回归和生产部署。
+
 ```bash
-npm --prefix uniapp install
+npm --prefix uniapp ci
 npm run uni:typecheck
 npm run uni:build:h5
 npm run uni:build:mp-weixin
@@ -110,7 +114,7 @@ npm run deploy:uni:preview       # 独立 Workers 预览地址
 npm run deploy:uni:production    # 验收后切换 map.okzer.xyz
 npm run deploy                   # 等同于 deploy:uni:production
 npm run deploy:legacy            # 显式重新部署旧 Web 静态资源
-npm run pipeline:uni             # 生产切换后的每日数据流水线
+npm run pipeline:uni             # 数据流水线并显式部署 uni-app H5
 npm run rollback:worker          # 回滚上一 Worker/H5 Assets 版本，不回滚 D1
 ```
 
@@ -137,6 +141,7 @@ npm run sync:data -- --from='D:\private\shenzhenMap-data\webmap'
 - `data/estates.geojson`
 - `data/streets.geojson`
 - `data/schools.geojson`
+- `data/school_zones.geojson`
 
 小区属性含 `ref_price`（官方二手住房成交参考价，2024 年度发布，2,881/3,594 匹配，80.2%）。官方参考价由数据车间 `fetch_official_reference_prices.py` 抓取、`match_official_reference_prices.py` 匹配，源数据为深圳市住房和建设局房地产信息平台发布的 2024 年版官方成交参考价（经本地宝转载 HTML 表结构整理）。官方参考价具有年度性，用于与每日更新的挂牌均价对比展示。
 
@@ -152,7 +157,7 @@ npm run sync:data -- --from='D:\private\shenzhenMap-data\webmap'
 npx wrangler login
 ```
 
-2. 首次部署会按 `wrangler.jsonc` 自动创建 D1，也可以手动创建：
+2. 当前生产命令固定读取已跟踪的 `wrangler.uni-production.jsonc`。执行任何 `*:remote`、`pipeline*` 或部署命令前，必须确认当前 Cloudflare 账号、D1 ID 和域名属于目标环境。自建环境可先创建自己的 D1，再把资源标识写入自己的部署配置：
 
 ```bash
 npx wrangler d1 create shenzhen-map --binding DB --update-config
@@ -168,7 +173,7 @@ npm run db:seed:remote
 
 `db:seed:remote` 只用于空数据库初始化。初始化 SQL 不包含删除语句，数据库已有数据时会因唯一约束而拒绝重复导入，不会清空现有价格历史。
 
-后续更新数据使用增量 Upsert：
+后续更新优先使用带测试、快照校验和备份的 `npm run pipeline`。如需绕过完整流水线执行增量 Upsert：
 
 ```bash
 npm run db:update:remote
@@ -176,7 +181,7 @@ npm run db:update:remote
 
 增量更新只修改有变化的小区和街道。每次导入无论价格是否变化，都会为每个小区记录一条"每日快照"到 `price_history`（`migrations/0014` 触发器，同一导入日幂等）；价格变化本身也会追加记录。历史保留 90 天，由 `npm run prune:history`（`scripts/prune-price-history.mjs`）循环清理，已接入 pipeline。
 
-生产流水线会在修改 D1 前比较本地快照与线上 `sourceObservedAt`，拒绝时间更旧或小区数量异常减少的快照。也可单独运行 `npm run validate:data` 检查。
+生产流水线会在修改 D1 前比较本地快照与线上 `sourceObservedAt`，拒绝时间更旧或小区数量低于线上 80% 的快照。也可单独运行 `npm run validate:data` 检查。直接执行 `db:update:remote` 或使用 `pipeline -- --start=N` 恢复分片会绕过该保护，必须人工确认数据。
 
 4. 构建并部署：
 
@@ -197,7 +202,7 @@ npm run deploy
 - `GET /api/streets`：街道几何（`/api/layers/streets` 为别名）
 - `GET /api/schools`：光明区、南山区 2026 公办学校点位与招生社区（`/api/layers/school-scopes` 为别名）
 - `GET /api/layers/school-zones`：学校学区范围多边形
-- `GET /api/heatmap`：按行政区或街道返回逐个小区的热力图点（不返回小区名称），参数需包含 `district`，可选 `street`、`pricedOnly`、`minPrice`、`maxPrice`
+- `GET /api/heatmap`：按行政区或街道返回逐个小区的热力图点（不返回小区名称），参数需包含 `district`，可选 `street`、`q`、`pricedOnly`、`missingRefPrice`、`minPrice`、`maxPrice`
 - `GET /api/layers/{transit|planning}`：计划数据层，暂返回 404
 
 地图接口强制传入 `west`、`south`、`east`、`north`，单次最多返回 1000 个明细点；低缩放级别返回服务端聚合结果。`/api/estates`、`/api/search`、`/api/ranking` 和导出接口支持 `missingRefPrice=1` 只返回无官方参考价的小区；`/api/estates` 和 `/api/search` 支持 `page`（1-1000）与 `pageSize`（1-50）分页，响应带 `pagination.hasMore`。
@@ -209,7 +214,7 @@ npm run deploy
 两个仓库拉到新机器后可以重建完整工作区。已经提交到 GitHub 的内容：
 
 - `shenzhenMap-web`：应用源码、全部迁移、脚本、测试、`wrangler.example.jsonc`、小程序源码
-- `fetch_house_prices`（私有）：全部主数据（`xq_index.json`、`official_reference_prices.json`、`schools_gm.json`、`rent_index.json` 等）与 `webmap/` 构建产物
+- `fetch_house_prices`（私有）：已提交时点的主数据与 `webmap/` 构建产物；日更后的本地变化需要另行提交或归档
 
 未提交、需要现场准备的内容：
 
@@ -229,12 +234,20 @@ npm --prefix uniapp ci
 # 2. 同步数据（默认读取并列目录 fetch_house_prices/webmap）
 npm run sync:data
 
-# 3. 本地预览（自动建本地 D1 并 seed）
+# 3. 初始化本地 D1
 npm run db:setup:local
-npm run dev
 
-# 4. 远程部署（需先 wrangler login；只有旧 Web 发布需要本地 wrangler.jsonc）
-npm run pipeline          # 同步 -> 生成 parts -> 备份 -> 迁移 -> 应用 -> prune -> 验证当前线上版本
+# 4. 创建本地 Wrangler 配置所需的 Assets 目录
+npm run build
+
+# 5. 终端一启动本地 API
+npm run dev:worker
+
+# 6. 将 uniapp/vite.config.ts 开发代理指向 127.0.0.1:8787 后，终端二启动当前 H5
+npm --prefix uniapp run dev:h5
+
+# 7. 远程数据流水线（需先 wrangler login；当前生产配置已跟踪）
+npm run pipeline          # 测试 -> 同步 -> 快照校验 -> 生成 -> 备份 -> 迁移 -> 应用 -> prune -> 验证
 npm run pipeline:uni      # 同上，并构建/部署 uni-app H5
 npm run pipeline:legacy   # 同上，并构建/部署旧 Web
 ```
@@ -243,15 +256,17 @@ npm run pipeline:legacy   # 同上，并构建/部署旧 Web
 
 ## 自动化运维
 
-每日数据更新已全自动，不需要手动执行任何命令：
+每日数据更新已配置计划任务，但受登录、电源和开机状态约束：
 
-- 计划任务 `\ShenzhenMapDailyUpdate`（03:30）执行 `fetch_house_prices/scripts/daily-update.mjs`
-- 链路：采集 → 空间归属 → 官方参考价匹配 → 重建 webmap → `shenzhenMap-web` 的完整 pipeline（同步/生成 parts/备份/迁移/应用/prune/构建/部署/验证）
+- 计划任务 `\ShenzhenMapDailyUpdate`（03:30）执行 `fetch_house_prices/scripts/run-daily.bat`，再调用 `daily-update.mjs`
+- 仅在用户已登录、机器开机并使用市电时运行；错过计划时间不会自动补跑
+- 链路：采集 → 空间归属 → 官方参考价匹配 → 重建 webmap → 测试/同步/快照校验/生成 parts/备份/迁移/应用/prune/验证，不构建或部署客户端
 - 备份：`scripts/backup-d1.mjs` 每天导出远程 D1，保留最近 14 份到 `backups/`
 - 历史清理：`npm run prune:history` 保留最近 90 天价格快照，已在 pipeline 中执行
-- 失败通知：环境变量 `NOTIFY_WEBHOOK` 未配置（需要钉钉/企微机器人地址），配置后可在每日更新失败时收到通知
+- 失败日志：`fetch_house_prices/logs/daily-update.log`
+- 失败通知：环境变量 `NOTIFY_WEBHOOK` 未配置，维护期必须人工巡检任务结果和日志
 
-Windows 上 wrangler 命令完成后进程可能不退出（zombie 进程），所有 wrangler 调用统一走 `scripts/run-wrangler.mjs`（完成模式匹配后主动结束进程树），不要直接用 `wrangler ...` 裸命令。
+Windows 上 Wrangler 命令完成后进程可能不退出（zombie 进程）。自动生产流水线中的备份、迁移、更新、清理和部署调用使用 `scripts/run-wrangler.mjs`；手工命令若不退出，需要检查输出后结束残留进程。
 
 ## 后续数据更新
 

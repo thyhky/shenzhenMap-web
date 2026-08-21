@@ -94,9 +94,9 @@ uniapp/src/pages/index ──┤
 两个地图组件共享核心业务契约，但平台能力决定了图层数据传递方式不同：
 
 - 共同输入：中心点、缩放级别、地图项、图层开关和聚焦边界。
-- H5 直接通过 props 接收街道、学校和学区数据。
+- H5 直接通过 props 接收街道、学校、学区、当前选中项、`selectionRevision` 和是否显示选中弹窗。
 - 微信通过共享 API 缓存读取图层，以 `layerRevision` 通知缓存快照已更新。
-- 输出：`select`、`viewport-change`；微信额外通过 `focus` 请求父页面改变受控中心点。
+- 输出：`select`、`viewport-change`；H5 通过 `details` 请求打开详情，微信额外通过 `focus` 请求父页面改变受控中心点。
 
 父页面只理解 `MapSelection`、`MapViewport` 和 WGS84 业务坐标，不理解 Leaflet 对象或微信事件结构。
 
@@ -106,6 +106,7 @@ uniapp/src/pages/index ──┤
 
 - `onMounted` 创建地图、底图、pane 和各图层容器。
 - props 变化时清空并重绘对应 LayerGroup/GeoJSON，不重建地图。
+- H5 使用 Leaflet 选中弹窗展示摘要和“查看详情”；微信继续使用地图外简略卡。
 - `moveend`、`zoomend` 经过短延迟后发送视口。
 - `ResizeObserver` 在桌面侧栏开关或容器变化时调用 `invalidateSize`。
 - `onBeforeUnmount` 清理定时器、Observer 和地图实例。
@@ -144,8 +145,11 @@ H5 使用 OSM/WGS84，不做微信坐标转换。弹窗文本通过 DOM 节点�
 - 901px 以上：筛选侧栏 + 地图 + 结果/详情侧栏。
 - 900px 以下：全屏地图 + 底部导航 + 上拉抽屉。
 - 微信：沿用移动端底栏和抽屉，地图替换为原生组件。
+- 小屏横屏且高度不超过 600px 时，60 秒无操作隐藏顶栏/底栏；触摸、指针、键盘或旋转会恢复导航。
 
 桌面侧栏可独立关闭，地图容器必须保持 `min-width: 0`、`min-height: 0`，并通知 Leaflet 重算尺寸。移动端高度使用完整视口，底栏和弹层需要叠加 `safe-area-inset-bottom`。
+
+H5 的 BottomSheet 和方法说明对话框必须保留 Tab 焦点循环、Escape 关闭及关闭后的焦点恢复。价格输入范围为 0–50 万/㎡，最小值不能大于最大值。桌面地图弹窗打开详情时，应自动重新打开右侧栏并切换到详情页。
 
 微信 component WXSS 不应依赖标签后代选择器，例如 `.card text`。需要样式的节点应添加明确 class，并使用 `.card .label` 形式，避免微信组件样式隔离告警。
 
@@ -184,17 +188,17 @@ H5 使用 OSM/WGS84，不做微信坐标转换。弹窗文本通过 DOM 节点�
 ### 开发验证
 
 ```powershell
+npm ci
+npm --prefix uniapp ci
+node --version # 必须为 24.x 或更高
+npm test       # 当前应为 27/27
+npm run typecheck
 npm run uni:typecheck
 npm run uni:build:h5
 npm run uni:build:mp-weixin
 ```
 
-涉及 Worker/API 时还必须运行：
-
-```powershell
-npm test
-npm run typecheck
-```
+所有发布都必须运行根测试和双端类型检查，不只是在修改 Worker/API 时运行。
 
 ### H5 发布
 
@@ -214,6 +218,8 @@ npm run uni:prepare:mp-weixin
 ```
 
 微信开发者工具必须导入 `uniapp/dist/build/mp-weixin/`，不能导入旧 `miniprogram/`。真实 AppID 只注入被忽略的构建目录，不提交到源码。
+
+正式 AppID 注入必须发生在最后一次 `uni:build:mp-weixin` 之后；再次构建会覆盖注入后的 `project.config.json`。当前发布版本应核对 `versionName=1.2.1`、`versionCode=121`。
 
 `manifest.json` 必须保留以下上传质量配置：
 
@@ -283,12 +289,16 @@ npm run uni:prepare:mp-weixin
 - `npm run uni:build:mp-weixin`
 - 生成 WXSS 无非法组件后代选择器
 - 微信 CLI 预览成功且包体未超限
+- Node.js 满足根 `package.json` 的 `>=24` 要求，当前自动测试应为 27 项
 
 ### H5 手工验证
 
 - 桌面三栏和移动底栏均正常。
 - 侧栏开关后地图无空白、错位或横向滚动。
 - 拖动、缩放、聚合、点选和搜索聚焦正常。
+- 验证 H5 选中弹窗、“查看详情”、右侧栏自动重开和详情切换。
+- 验证小屏横屏 60 秒隐藏、交互恢复和旋转后的地图尺寸。
+- 验证 Tab/Escape/焦点恢复、价格范围及最小值不大于最大值。
 - 编辑筛选草稿时不请求；应用后地图/结果主查询一次，榜单处于活动状态时另刷新一次榜单。
 - 结果分页、榜单、详情、历史和导出正常。
 - 生产域名 API、SPA 刷新和缓存头正常。
@@ -301,13 +311,16 @@ npm run uni:prepare:mp-weixin
 - 低缩放显示聚合，覆盖物数量受限。
 - 学校、学区和街道绘制与命中一致。
 - CSV 文件分享和相册权限拒绝/重新授权流程正常。
+- 验证价格输入、筛选、结果、详情和方法说明在 1.2.1 中正常。
 - 上传检查中 JS 压缩和组件按需注入通过。
 
 ## 12. 回滚策略
 
 - H5：`npm run rollback:worker` 回滚 Wrangler 选择的上一 Worker/Assets 版本，不回滚 D1 数据、迁移或绑定资源。执行前确认目标版本与当前 D1 schema 兼容，完成后运行 `npm run verify:remote`。
-- 旧 Web：根目录 `src/` 和 `wrangler.jsonc` 暂时保留；`npm run deploy` 会重新构建并部署当前旧 Web 源码，不等同于恢复某个不可变历史版本。
+- 旧 Web：根目录 `src/` 和 `wrangler.jsonc` 暂时保留；`npm run deploy:legacy` 会重新构建并部署当前旧 Web 源码，不等同于恢复某个不可变历史版本。默认 `npm run deploy` 发布当前 uni-app H5。
 - 微信：公众平台保留上一线上版本；`miniprogram/` 保留为 `1.1.0` 源码基线。
 - 后端接口在迁移期间保持兼容，因此新旧客户端可以短期并行运行。
 
-`pipeline:uni` 可能先更新 D1 再部署客户端，不能假设 Worker 回滚会恢复数据。旧客户端只用于回滚，不再承接新需求。确认 H5 和微信新版本稳定运行一个发布周期后，再单独评估归档旧前端，不能连同 `worker/`、数据库迁移和运维脚本一起删除。
+`pipeline:uni` 可能先更新 D1 再部署客户端，不能假设 Worker 回滚会恢复数据。分片中断后使用 `npm run pipeline -- --start=N` 复用现有 manifest 和 parts；不要先重新同步、运行 `update:generate` 或生成新 parts。恢复模式会绕过快照时效/数量校验，必须人工确认，且 `--url` 只改变比较/验证地址，不会改变生产 D1 目标。
+
+旧客户端只用于回滚，不再承接新需求。确认 H5 和微信新版本稳定运行一个发布周期后，再单独评估归档旧前端，不能连同 `worker/`、数据库迁移和运维脚本一起删除。

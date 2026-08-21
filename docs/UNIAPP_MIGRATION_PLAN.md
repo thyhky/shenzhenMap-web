@@ -1,5 +1,7 @@
 # uni-app 客户端迁移计划
 
+状态：代码迁移完成，H5 已切换生产；`1.2.1` 双端自动构建和微信 CLI 预览通过，待 H5 浏览器回归/部署及微信真机复测/上传审核。阶段性交付状态见 [`PROJECT_HANDOFF.md`](./PROJECT_HANDOFF.md)。
+
 ## 目标
 
 将现有 Vue Web（`src/`）和微信原生小程序（`miniprogram/`）逐步迁移到 `uniapp/`，最终由一套 Vue 3 + TypeScript 业务代码生成 H5 和微信小程序。
@@ -8,11 +10,12 @@
 
 ## 稳定基线
 
-- Git：`4cc1a66`（网页与小程序点击后只显示地图简略信息，详情由用户主动打开）
-- 微信小程序线上版本：`1.1.0`；uni-app 待提交版本：`1.2.0`
+- 迁移起始 Git 基线：`4cc1a66`（网页与小程序点击后只显示地图摘要，详情由用户主动打开）
+- 当前源码基线：`16624a6`（GitHub `1.2.1`，本地另叠加交付文档提交）
+- 微信小程序线上版本：`1.1.0`；uni-app 待提交版本：`1.2.1`
 - 生产地址：`https://map.okzer.xyz`
 - API 健康检查：`GET /api/health`
-- Worker 契约测试：21 项
+- 自动测试：27 项（数据导入 10 项、Worker 契约 17 项）
 
 ## 技术决策
 
@@ -50,7 +53,7 @@ shenzhenMap-web/
 
 ```bash
 cd uniapp
-npm install
+npm ci
 npm run build:h5
 npm run build:mp-weixin
 ```
@@ -74,18 +77,18 @@ H5 输出到 `uniapp/dist/build/h5/`；微信小程序输出到 `uniapp/dist/bui
 
 - H5 已接入 Leaflet、OpenStreetMap、真实 bbox/zoom、六档价格点、服务端聚合和点选。
 - 微信已接入原生 map 的 circles、聚合数量 marker、regionchange、MapContext 视口读取、最近点命中及 WGS84/GCJ-02 成对转换。
-- 两端共用当前视口筛选、请求防乱序、结果定位、聚合放大和地图外简略卡。
+- 两端共用当前视口筛选、请求防乱序、结果定位和聚合放大；H5 使用 Leaflet 选中弹窗，微信使用地图外简略卡。
 - 街道、学校和学区由页面按需加载并缓存；H5 使用 GeoJSON/marker，微信使用 polygons/circles。
 - 微信只下发当前视口覆盖物：circle 总数不超过 980，polygon 不超过 400、简化后总点数不超过 6000；绘制和命中共用同一简化 ring。
-- H5、`mp-weixin` 构建和类型检查通过；微信真机交互已验收。
+- `1.2.0` 的微信真机交互已验收；`1.2.1` 双端构建通过，待浏览器和真机回归。
 
-阶段 3 的地图图层代码迁移与双端验收已完成。
+阶段 3 的地图图层代码迁移已完成；当前 `1.2.1` 回归状态以阶段性交付摘要为准。
 
-阶段 4 已完成结果分页、全市搜索、排行、按需详情、7/30/90 天历史、CSV/价格图导出和数据说明。地图点击仍只显示简略卡，用户主动打开详情后才请求完整信息；各分页与详情请求均使用独立请求序号。
+阶段 4 已完成结果分页、全市搜索、排行、按需详情、7/30/90 天历史、CSV/价格图导出和数据说明。地图点击只显示摘要，H5 使用 Leaflet 弹窗、微信使用地图外简略卡；用户主动打开详情后才请求完整信息，各分页与详情请求均使用独立请求序号。
 
-阶段 5 已完成 H5 桌面三栏断点，并保留单一 Leaflet 实例和共享业务状态。H5 已切换生产，微信已通过开发者工具和真机验收。
+阶段 5 已完成 H5 桌面三栏断点，并保留单一 Leaflet 实例和共享业务状态。H5 已切换生产；远端后续 UI 优化尚待预览浏览器回归和生产发布。
 
-发布配置分离：`wrangler.uni-preview.jsonc` 用于独立 Workers 预览地址，`wrangler.uni-production.jsonc` 用于正式切换，原 `wrangler.jsonc` 保留旧 Web 静态资源回滚。Worker/API 使用 `npm run rollback:worker` 回退上一部署版本；日常数据流水线默认不部署客户端，只有显式 `pipeline:uni` 或 `pipeline:legacy` 才发布。
+发布配置分离：`wrangler.uni-preview.jsonc` 用于独立 Workers 预览地址，`wrangler.uni-production.jsonc` 用于正式切换，原 `wrangler.jsonc` 保留旧 Web 静态资源回滚。`npm run rollback:worker` 回退上一 Worker/H5 Assets 部署，不回退 D1；日常数据流水线默认不部署客户端，只有显式 `pipeline:uni` 或 `pipeline:legacy` 才发布。
 
 ## H5 预览记录
 
@@ -101,14 +104,14 @@ H5 输出到 `uniapp/dist/build/h5/`；微信小程序输出到 `uniapp/dist/bui
 - 2026-08-20 使用正式 AppID 注入构建目录，源码继续保留 `touristappid`。
 - 微信开发者工具 CLI 登录、项目导入、编译和预览均通过，预览包大小 253.3 KB。
 - 已将地图覆盖物计算和价格图导出的 `getSystemInfoSync` 替换为 `getWindowInfo`，避免刷新地图时重复输出弃用警告。
-- 修复后的真机地图交互复测通过；待上传 `1.2.0` 并提交微信审核。
+- `1.2.0` 地图交互复测通过；`1.2.1` 构建、正式 AppID 注入和微信 CLI 预览通过，包大小 177.5 KB，待真机复测后上传审核。
 - 发布构建启用 JS 压缩和 `requiredComponents` 按需注入，满足微信上传代码质量检查。
 
 ## 约束
 
 - 不在 uni-app 迁移中修改价格、学校、学区的数据口径。
 - 筛选仍采用“编辑草稿，点击应用后请求”的交互。
-- 点击小区只显示地图简略信息，详情由用户主动打开。
+- 点击小区只显示地图摘要（H5 Leaflet 弹窗、微信地图外简略卡），详情由用户主动打开。
 - 微信原生地图覆盖物数量必须受限，低缩放级别必须使用聚合。
 - 微信端覆盖物使用 WGS84 → GCJ-02，视口 bbox 使用 GCJ-02 → WGS84；正式验收仍须检查底图偏移和边缘查询。
 - 任何生产切换都必须先通过现有 Worker 测试和双端手工验收。
