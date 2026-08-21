@@ -77,16 +77,16 @@ npm run db:setup:local
 
 `db:setup:local` 只适用于空的本地数据库。已有本地数据时重复执行 seed 可能触发唯一键冲突，应使用 `npm run db:update:local`。
 
-## 微信小程序
+## 旧原生微信小程序（仅回滚）
 
-`miniprogram/` 提供一个微信原生小程序页面，直接调用 `https://map.okzer.xyz/api/*`，不依赖 `web-view`。使用微信开发者工具导入该目录，并将 `project.config.json` 中的 `touristappid` 替换为自己的 AppID。
+`miniprogram/` 是微信 `1.1.0` 的原生小程序回滚基线，直接调用 `https://map.okzer.xyz/api/*`，不依赖 `web-view`。新版本开发和发布统一使用下方 `uniapp/`，不要常规上传此目录。
 
-发布前需要在微信公众平台配置：
+该回滚版所需平台配置与新版本一致：
 
 - request 合法域名：`map.okzer.xyz`
 - downloadFile 合法域名：`map.okzer.xyz`（用于导出租售比+最佳学校 CSV）
 
-当前不需要业务域名，因为页面不使用 `web-view`。详细步骤见 [`miniprogram/README.md`](./miniprogram/README.md)。不应提交真实 AppID 或密钥。
+当前不需要业务域名，因为页面不使用 `web-view`。旧版源码与运行说明见 [`miniprogram/README.md`](./miniprogram/README.md)。不应提交真实 AppID 或密钥。
 
 ## uni-app 迁移工程
 
@@ -111,10 +111,12 @@ npm run deploy:uni:production    # 验收后切换 map.okzer.xyz
 npm run deploy                   # 等同于 deploy:uni:production
 npm run deploy:legacy            # 显式重新部署旧 Web 静态资源
 npm run pipeline:uni             # 生产切换后的每日数据流水线
-npm run rollback:worker          # 回滚 Worker/API 到上一部署版本
+npm run rollback:worker          # 回滚上一 Worker/H5 Assets 版本，不回滚 D1
 ```
 
 微信正式构建先运行 `npm run uni:build:mp-weixin`，再设置 `WECHAT_APP_ID` 并执行 `npm run uni:prepare:mp-weixin`。公众平台必须配置 `https://map.okzer.xyz` 的 request/downloadFile 合法域名和相册隐私用途。
+
+双端分层、地图适配、状态管理、扩展步骤和发布验收约束见 [`docs/UNIAPP_IMPLEMENTATION_GUIDE.md`](./docs/UNIAPP_IMPLEMENTATION_GUIDE.md)。后续前端需求以该方案为基线，不再同步修改旧 `src/` 或 `miniprogram/`。
 
 ## 数据来源
 

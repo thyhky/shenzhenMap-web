@@ -25,3 +25,5 @@ npm run build:mp-weixin
 - H5 已通过预览验收并切换生产；微信已通过开发者工具和真机交互验收，待在微信公众平台提交审核并发布。
 
 迁移进度见 `../docs/UNIAPP_FEATURE_MATRIX.md`。
+
+后续开发见 [双端实现方案](../docs/UNIAPP_IMPLEMENTATION_GUIDE.md)。
