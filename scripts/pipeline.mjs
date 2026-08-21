@@ -197,7 +197,11 @@ for (const [index, step] of steps.entries()) {
   console.log(`\n===== ${label} =====`)
   try {
     if (step.donePatterns) {
-      await runWrangler(step.cmd, step.args, { cwd: step.cwd, donePatterns: step.donePatterns })
+      await runWrangler(step.cmd, step.args, {
+        cwd: step.cwd,
+        donePatterns: step.donePatterns,
+        failPatterns: step.failPatterns,
+      })
     } else {
       execFileSync(step.cmd, step.args, { cwd: step.cwd, stdio: 'inherit' })
     }
