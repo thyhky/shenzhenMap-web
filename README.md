@@ -145,7 +145,7 @@ npm run sync:data -- --from='D:\private\shenzhenMap-data\webmap'
 
 小区属性含 `ref_price`（官方二手住房成交参考价，2024 年度发布，2,881/3,594 匹配，80.2%）。官方参考价由数据车间 `fetch_official_reference_prices.py` 抓取、`match_official_reference_prices.py` 匹配，源数据为深圳市住房和建设局房地产信息平台发布的 2024 年版官方成交参考价（经本地宝转载 HTML 表结构整理）。官方参考价具有年度性，用于与每日更新的挂牌均价对比展示。
 
-学校数据当前覆盖光明区和南山区：`schools.geojson` 含 2026 年官方数据的 228 所学校，包含学校名称、地址、对应社区和咨询电话。光明区学区范围依据官方招生社区名称按社区中心点 Voronoi 划分，为近似范围；南山区学区范围采用南山区教育局学区地图的官方多边形。学校点位和南山区边界经坐标转换为 WGS84，用于地图展示。招生范围具有年度性，请以主管部门最新公告为准。
+`schools.geojson` 当前包含 228 所学校：南山区 129 所使用官方学校点和官方学区多边形；光明区 81 所名单完整，但学区为社区/Voronoi 近似；宝安区 12 所、罗湖区 5 所、龙华区 1 所来自乐有家补充，点位为附近小区质心且学区为近似圆。学校点和边界统一使用 WGS84。招生范围具有年度性，近似数据不能视为官方划片，请以主管部门最新公告为准。
 
 `npm run update:generate` 根据快照生成 `seed/update.sql`。生成的 SQL 被 `.gitignore` 排除，避免把完整数据作为公开源码提交。正式部署时应通过受控环境导入数据库。
 
@@ -165,15 +165,16 @@ npx wrangler d1 create shenzhen-map --binding DB --update-config
 
 3. 首次初始化远程数据库并导入当前数据：
 
-```bash
+```powershell
 npm run db:migrate:remote
 npm run seed:generate
+$env:ALLOW_REMOTE_SEED = '1' # 仅限已确认的全新空数据库
 npm run db:seed:remote
 ```
 
 `db:seed:remote` 只用于空数据库初始化。初始化 SQL 不包含删除语句，数据库已有数据时会因唯一约束而拒绝重复导入，不会清空现有价格历史。
 
-后续更新优先使用带测试、快照校验和备份的 `npm run pipeline`。如需绕过完整流水线执行增量 Upsert：
+后续更新优先使用 `npm run pipeline`。`db:update:remote` 现在也走同一套测试、快照校验、本地 SQL 预演、迁移状态检查、备份和验证，只是使用已有的 `data/` 快照而不重新同步：
 
 ```bash
 npm run db:update:remote
@@ -181,7 +182,7 @@ npm run db:update:remote
 
 增量更新只修改有变化的小区和街道。每次导入无论价格是否变化，都会为每个小区记录一条"每日快照"到 `price_history`（`migrations/0014` 触发器，同一导入日幂等）；价格变化本身也会追加记录。历史保留 90 天，由 `npm run prune:history`（`scripts/prune-price-history.mjs`）循环清理，已接入 pipeline。
 
-生产流水线会在修改 D1 前比较本地快照与线上 `sourceObservedAt`，拒绝时间更旧或小区数量低于线上 80% 的快照。也可单独运行 `npm run validate:data` 检查。直接执行 `db:update:remote` 或使用 `pipeline -- --start=N` 恢复分片会绕过该保护，必须人工确认数据。
+生产流水线会在修改 D1 前比较本地快照与线上 `sourceObservedAt`，拒绝时间更旧或小区数量低于线上 80% 的快照。也可单独运行 `npm run validate:data` 检查。生成的 SQL 分片会写入 SHA-256 manifest，预演和远端执行都会拒绝内容被改写的分片。恢复分片按错误提示使用 `npm run pipeline -- --profile=PROFILE --start=N --skip-migrate --skip-deploy`，该模式会绕过快照保护，必须人工确认数据。
 
 4. 构建并部署：
 
@@ -200,7 +201,7 @@ npm run deploy
 - `GET /api/estates/:id`：读取单个小区详情
 - `GET /api/estates/:id/price-history`：小区价格历史（`?limit=1..200`，`?days=1..90` 按最近天数过滤，默认 30 天）
 - `GET /api/streets`：街道几何（`/api/layers/streets` 为别名）
-- `GET /api/schools`：光明区、南山区 2026 公办学校点位与招生社区（`/api/layers/school-scopes` 为别名）
+- `GET /api/schools`：当前学校点位与招生社区，包含南山/光明主数据及宝安/罗湖/龙华补充数据（`/api/layers/school-scopes` 为别名）
 - `GET /api/layers/school-zones`：学校学区范围多边形
 - `GET /api/heatmap`：按行政区或街道返回逐个小区的热力图点（不返回小区名称），参数需包含 `district`，可选 `street`、`q`、`pricedOnly`、`missingRefPrice`、`minPrice`、`maxPrice`
 - `GET /api/layers/{transit|planning}`：计划数据层，暂返回 404
@@ -254,13 +255,66 @@ npm run pipeline:legacy   # 同上，并构建/部署旧 Web
 
 如果不想使用仓库内已提交的 `webmap/`，可在 `fetch_house_prices` 里重新运行采集流水线（`fetch_xq_leyoujia.py` → `build_web_map_data.py` 等）生成新的快照，但需要乐有家等数据源仍可访问。
 
+## 一键每周数据更新
+
+Windows 上可双击仓库根目录的 [`run-weekly-update.bat`](./run-weekly-update.bat)。确认后，它会依次执行小区采集、空间归属、官方参考价匹配、四套合并快照生成、学校/学区门禁、本地 SQL 全量预演、D1 备份、生产数据更新和远端验证，不部署 H5、Worker 或小程序客户端，也不会自动应用待处理数据库迁移。
+
+命令行等价操作：
+
+```powershell
+npm run update:weekly -- --yes
+```
+
+首次运行前可只检查路径和执行计划，不采集或写入生产：
+
+```powershell
+npm run update:weekly -- --dry-run
+```
+
+常用选项：
+
+- `--full`：执行完整小区列表审计，而不是常规地图范围刷新。
+- `--with-rent`：同时更新租金样本。
+- `--allow-school-id-replacements`：允许经人工审查的学校 ID 替换；常规更新不要使用。
+- `--allow-school-content-changes`：允许发布日期相同但内容发生变化的学校/学区；仅用于人工确认的边界修正。
+- `--allow-school-geometry-warnings`：允许人工确认的新拓扑或点/学区警告；常规更新不要使用。
+- `--workshop=DIR`：指定私有数据车间目录。
+
+脚本不会抓取或自动补齐宝安、龙华官方学校/学区。它只合并 `fetch_house_prices` 中现有的光明、南山和补充源文件；新增官方数据必须先整理为现有 Point/Polygon 契约，再由脚本校验和发布。
+
+## 一次性分类更新工具
+
+以下两个 Windows 工具只更新指定的数据表，都会先执行迁移门禁、数据校验、本地 SQL 预演和 D1 备份，最后上传 Cloudflare D1 并验证；不会部署 H5、Worker 或小程序客户端：
+
+```text
+run-school-data-update-once.bat
+run-estate-price-update-once.bat
+```
+
+`run-school-data-update-once.bat` 会先运行数据车间的 `build_web_map_data.py`，然后只同步和写入 `schools`、`school_zones` 及对应版本元数据。它不会抓取教育局数据；运行前应先更新 `fetch_house_prices` 中的学校/学区源文件。学校 ID、同发布日期内容或几何警告发生受控变化时，使用脚本提示的人工审核参数。
+
+`run-estate-price-update-once.bat` 会执行常规小区采集、空间归属、官方参考价匹配和 webmap 构建，然后只写入 `estates`、`streets` 及对应版本元数据。`price_history` 由 D1 触发器生成同日幂等快照，并在成功后清理 90 天前记录；学校和学区表不会改变。
+
+只检查执行计划、不采集或写入生产时使用命令行入口；BAT 固定执行对应的生产 profile，不转发自定义参数：
+
+```powershell
+npm run update:schools -- --dry-run
+npm run update:estate-prices -- --dry-run
+```
+
+命令行等价入口为 `npm run update:schools -- --yes` 和 `npm run update:estate-prices -- --yes`。三个生产更新入口在当前机器、当前 checkout 内共用 `.production-data-update.lock`，不能并行执行；该文件锁不能阻止其他机器、其他 clone 或直接 Wrangler 命令写入同一个 D1。
+
+学校门禁要求必填字段完整且格式规范、学校 ID 唯一、发布时间不倒退、Point 位于深圳安全范围、每所学校恰好对应一个无内环的 Polygon/MultiPolygon 学区、学校与学区的行政区/学段一致，并禁止各区学校数量下降、未授权 ID 替换或同日期内容变化。已知旧拓扑问题只能原样保留或修复，不允许静默替换为另一份错误几何，也不允许新增自相交学区或新增“学校点落在学区外”的情况。`pipeline` 会更新全部四类数据，不是学校专用更新；执行前仍需审查私有仓库中的小区变化。
+
+一键周更使用当前 checkout 的生产数据锁，与原日更及直接执行 `pipeline` 互斥。进程异常退出后的死锁会在确认原 PID 不存在时自动清理；如果锁仍属于存活进程，必须先确认该任务状态，不能直接删除锁文件。
+
 ## 自动化运维
 
 每日数据更新已配置计划任务，但受登录、电源和开机状态约束：
 
 - 计划任务 `\ShenzhenMapDailyUpdate`（03:30）执行 `fetch_house_prices/scripts/run-daily.bat`，再调用 `daily-update.mjs`
 - 仅在用户已登录、机器开机并使用市电时运行；错过计划时间不会自动补跑
-- 链路：采集 → 空间归属 → 官方参考价匹配 → 重建 webmap → 测试/同步/快照校验/生成 parts/备份/迁移/应用/prune/验证，不构建或部署客户端
+- 链路：采集 → 空间归属 → 官方参考价匹配 → 重建 webmap → 测试/同步/快照校验/本地 SQL 预演/迁移状态检查/备份/应用/prune/验证，不自动应用迁移，也不构建或部署客户端
 - 备份：`scripts/backup-d1.mjs` 每天导出远程 D1，保留最近 14 份到 `backups/`
 - 历史清理：`npm run prune:history` 保留最近 90 天价格快照，已在 pipeline 中执行
 - 失败日志：`fetch_house_prices/logs/daily-update.log`

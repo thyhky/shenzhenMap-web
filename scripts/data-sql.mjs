@@ -40,12 +40,18 @@ export function requireFeatureCollection(name, collection) {
   return collection
 }
 
-export async function loadSourceData(sourceRoot) {
-  const estates = requireFeatureCollection('estates', JSON.parse(await readFile(resolve(sourceRoot, 'estates.geojson'), 'utf8')))
-  const streets = requireFeatureCollection('streets', JSON.parse(await readFile(resolve(sourceRoot, 'streets.geojson'), 'utf8')))
-  const schools = requireFeatureCollection('schools', JSON.parse(await readFile(resolve(sourceRoot, 'schools.geojson'), 'utf8')))
-  const schoolZones = requireFeatureCollection('school zones', JSON.parse(await readFile(resolve(sourceRoot, 'school_zones.geojson'), 'utf8')))
-  return { estates, streets, schools, schoolZones }
+export async function loadSourceData(sourceRoot, profile = 'all') {
+  if (!['all', 'schools', 'estate-prices'].includes(profile)) throw new Error(`Invalid source data profile: ${profile}`)
+  const result = {}
+  if (profile !== 'schools') {
+    result.estates = requireFeatureCollection('estates', JSON.parse(await readFile(resolve(sourceRoot, 'estates.geojson'), 'utf8')))
+    result.streets = requireFeatureCollection('streets', JSON.parse(await readFile(resolve(sourceRoot, 'streets.geojson'), 'utf8')))
+  }
+  if (profile !== 'estate-prices') {
+    result.schools = requireFeatureCollection('schools', JSON.parse(await readFile(resolve(sourceRoot, 'schools.geojson'), 'utf8')))
+    result.schoolZones = requireFeatureCollection('school zones', JSON.parse(await readFile(resolve(sourceRoot, 'school_zones.geojson'), 'utf8')))
+  }
+  return result
 }
 
 export function sourceDataVersion(estates, streets, catalog = null, schools = null, schoolZones = null) {

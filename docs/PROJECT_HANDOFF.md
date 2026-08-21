@@ -30,7 +30,8 @@
 
 - Node.js `24.13.1`、npm `11.8.0`。
 - 根工程和 uni-app 均通过 `npm ci`；DCloud 构建链仍报告 42 个已知开发依赖告警。
-- 自动测试 27/27 通过，根工程和 uni-app 类型检查通过。
+- 自动测试 34/34 通过（数据/学校校验 15 项、生产锁 2 项、Worker 17 项），根工程和 uni-app 类型检查通过。
+- 当前学校门禁识别 99 个近似学区、19 个既有拓扑警告和 8 个既有点/学区警告；允许旧问题原样保留，但拒绝新增同类问题。
 - H5 和微信构建通过，生产 Wrangler dry-run 到达 `--dry-run: exiting now`。
 - 微信正式 AppID 注入成功，CLI 预览包 `177.5 KB`。
 - 微信产物启用 JS 压缩、`requiredComponents` 按需注入，未扫描到调试 JS 或非法 WXSS 后代选择器。
@@ -107,6 +108,8 @@ C:\code\Codex\fetch_house_prices\scripts\run-daily.bat
 
 该任务仅在用户已登录、机器开机并接通市电时运行；错过计划时间不会自动补跑。失败日志位于 `C:\code\Codex\fetch_house_prices\logs\daily-update.log`。`NOTIFY_WEBHOOK` 尚未配置，维护期需要定期人工检查任务结果和日志，否则失败不会主动通知。
 
+手工周更可双击根目录 `run-weekly-update.bat`，或执行 `npm run update:weekly -- --yes`。该入口会合并已经准备好的学校/学区源文件，执行学校门禁和本地 SQL 预演，但不会自动采集宝安、龙华官方学区，也不会自动应用数据库迁移。仅检查计划可使用 `npm run update:weekly -- --dry-run`。
+
 ## 已知限制
 
 - 微信地图当前只处理 Polygon/MultiPolygon 外环，含内环孔洞的新图层需要先扩展绘制和命中逻辑。
@@ -179,6 +182,6 @@ npm run deploy:legacy
 
 `rollback:worker` 只选择上一 Worker/Assets 版本，不保证它就是旧 Web。微信回退在公众平台“版本管理”中选择上一线上版本。D1 没有自动恢复流程，本机 `backups/` 中的 SQL 需要人工审查后恢复。
 
-生产 D1 更新仍遵循非破坏性流程：禁止在已有数据库上执行 `db:seed:remote`。常规生产更新使用带测试、快照保护和备份的 `npm run pipeline`；`db:update:remote` 会绕过这些保护，只能作为人工确认后的受控操作。
+生产 D1 更新仍遵循非破坏性流程：禁止在已有数据库上执行 `db:seed:remote`。常规生产更新使用 `npm run pipeline`；`db:update:remote` 也使用相同保护，但读取现有 `data/` 快照而不重新同步。
 
-分片更新中断时使用 `npm run pipeline -- --start=N` 复用现有 manifest/parts，不要重新同步或生成；该恢复模式绕过快照保护，执行前必须人工确认剩余分片和数据时点。
+分片更新中断时按错误提示使用 `npm run pipeline -- --profile=PROFILE --start=N --skip-migrate --skip-deploy` 复用现有 manifest/parts，不要重新同步或生成；该恢复模式绕过快照保护，执行前必须人工确认剩余分片和数据时点。

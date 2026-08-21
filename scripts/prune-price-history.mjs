@@ -2,6 +2,7 @@
 // remote D1 database (circular overwrite). Run after update parts are applied.
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { joinProductionUpdateLock, releaseProductionUpdateLock } from './production-update-lock.mjs'
 import { runWrangler } from './run-wrangler.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -26,13 +27,20 @@ if (!Number.isInteger(days) || days < 1 || days > 3650) {
 const target = args.includes('--local') ? '--local' : '--remote'
 const configArgs = target === '--remote' ? ['--config', productionConfig] : []
 
-await runWrangler(
-  wrangler,
-  ['d1', 'execute', 'DB', target, '--command', `DELETE FROM price_history WHERE date(captured_at) < date('now', '-${days} days')`, ...configArgs],
-  {
-    cwd: projectRoot,
-    donePatterns: [/"success": true/, /executed successfully/i],
-    failPatterns: [/^X /, /fetch failed/i, /ERROR/i],
-  },
-)
-console.log(`[prune] price history pruned to the last ${days} days (${target})`)
+const updateLock = target === '--remote'
+  ? await joinProductionUpdateLock(projectRoot, 'remote history prune', process.env.PRODUCTION_UPDATE_LOCK_TOKEN)
+  : null
+try {
+  await runWrangler(
+    wrangler,
+    ['d1', 'execute', 'DB', target, '--command', `DELETE FROM price_history WHERE date(captured_at) < date('now', '-${days} days')`, ...configArgs],
+    {
+      cwd: projectRoot,
+      donePatterns: [/"success": true/, /executed successfully/i],
+      failPatterns: [/^X /, /fetch failed/i, /ERROR/i],
+    },
+  )
+  console.log(`[prune] price history pruned to the last ${days} days (${target})`)
+} finally {
+  await releaseProductionUpdateLock(updateLock)
+}

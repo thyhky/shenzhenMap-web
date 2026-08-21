@@ -13,6 +13,12 @@ if ((process.env.HTTPS_PROXY || process.env.HTTP_PROXY) && !process.execArgv.inc
   process.exit(0)
 }
 const sourceRoot = resolve(projectRoot, 'data')
+const expectedManifest = process.env.EXPECTED_UPDATE_RUN_ID
+  ? JSON.parse(await readFile(resolve(projectRoot, 'seed', 'update-parts', 'manifest.json'), 'utf8'))
+  : null
+if (expectedManifest && expectedManifest.runId !== process.env.EXPECTED_UPDATE_RUN_ID) {
+  throw new Error('Update manifest was replaced before production verification')
+}
 
 async function request(path) {
   const response = await fetch(`${baseUrl}${path}`, { signal: AbortSignal.timeout(90_000) })
@@ -61,6 +67,12 @@ const newSearch = await api('/api/search?q=%E6%B5%B7%E5%BE%B7%E5%9B%AD&minPrice=
 const map = await api('/api/estates?west=113.7&south=22.4&east=114.4&north=22.9&zoom=10&minPrice=20000&maxPrice=320000')
 const detail = await api('/api/estates/2')
 const history = await api('/api/estates/2/price-history?limit=100')
+const currentHistorySource = expectedManifest
+  ? sourceEstates.features.find((feature) => feature.properties.has_price)
+  : null
+const currentHistory = currentHistorySource
+  ? await api(`/api/estates/${currentHistorySource.properties.id}/price-history?limit=100`)
+  : null
 const pageOne = await api('/api/search?q=%E5%8F%AF%E5%9B%AD&minPrice=0&maxPrice=500000&page=1&pageSize=2')
 const pageTwo = await api('/api/search?q=%E5%8F%AF%E5%9B%AD&minPrice=0&maxPrice=500000&page=2&pageSize=2')
 const priceRanking = await api('/api/ranking?sort=price&page=1&pageSize=2')
@@ -154,6 +166,11 @@ const result = {
   history: {
     count: history.history.length,
     truncated: history.truncated,
+    currentImportVerified: !expectedManifest || Boolean(currentHistory?.history?.some((entry) => (
+      entry.price === currentHistorySource.properties.price
+      && entry.sourceObservedAt === currentHistorySource.properties.source_observed_at
+      && entry.capturedAt?.slice(0, 10) === expectedManifest.importedAt.slice(0, 10)
+    ))),
   },
   pagination: {
     firstPage: pageOne.results.map((estate) => estate.id),
@@ -202,6 +219,8 @@ if (
   !result.meta.recordChangedAt ||
   result.cache.second !== 'HIT' ||
   !result.cache.version ||
+  (expectedManifest && result.cache.version !== expectedManifest.dataVersion) ||
+  (expectedManifest && meta.catalog.dataVersion !== expectedManifest.dataVersion) ||
   result.catalog.scopes.length !== 6 ||
   result.catalog.scopes.filter((scope) => scope.status === 'active').length !== 4 ||
   !result.catalog.hasDisclaimer ||
@@ -215,6 +234,7 @@ if (
   result.search.firstResult !== '可园三期' ||
   result.newSearch.firstResult !== '海德园' ||
   result.history.count < 1 ||
+  !result.history.currentImportVerified ||
   result.pagination.firstPage.some((id) => result.pagination.secondPage.includes(id)) ||
   result.ranking.priceItems !== 2 ||
   result.ranking.priceFirstRank !== 1 ||

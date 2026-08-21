@@ -191,7 +191,7 @@ H5 的 BottomSheet 和方法说明对话框必须保留 Tab 焦点循环、Escap
 npm ci
 npm --prefix uniapp ci
 node --version # 必须为 24.x 或更高
-npm test       # 当前应为 27/27
+npm test       # 当前应为 34/34
 npm run typecheck
 npm run uni:typecheck
 npm run uni:build:h5
@@ -289,7 +289,7 @@ npm run uni:prepare:mp-weixin
 - `npm run uni:build:mp-weixin`
 - 生成 WXSS 无非法组件后代选择器
 - 微信 CLI 预览成功且包体未超限
-- Node.js 满足根 `package.json` 的 `>=24` 要求，当前自动测试应为 27 项
+- Node.js 满足根 `package.json` 的 `>=24` 要求，当前自动测试应为 34 项
 
 ### H5 手工验证
 
@@ -321,6 +321,6 @@ npm run uni:prepare:mp-weixin
 - 微信：公众平台保留上一线上版本；`miniprogram/` 保留为 `1.1.0` 源码基线。
 - 后端接口在迁移期间保持兼容，因此新旧客户端可以短期并行运行。
 
-`pipeline:uni` 可能先更新 D1 再部署客户端，不能假设 Worker 回滚会恢复数据。分片中断后使用 `npm run pipeline -- --start=N` 复用现有 manifest 和 parts；不要先重新同步、运行 `update:generate` 或生成新 parts。恢复模式会绕过快照时效/数量校验，必须人工确认，且 `--url` 只改变比较/验证地址，不会改变生产 D1 目标。
+`pipeline:uni` 可能先更新 D1 再部署客户端，不能假设 Worker 回滚会恢复数据。分片中断后按 manifest profile 使用 `npm run pipeline -- --profile=PROFILE --start=N --skip-migrate --skip-deploy` 复用现有 manifest 和 parts；不要先重新同步、运行 `update:generate` 或生成新 parts。恢复模式会绕过快照时效/数量校验，必须人工确认，且 `--url` 只改变比较/验证地址，不会改变生产 D1 目标。一次性学校和小区价格工具分别使用 `schools`、`estate-prices` profile，禁止写入另一类业务表。
 
 旧客户端只用于回滚，不再承接新需求。确认 H5 和微信新版本稳定运行一个发布周期后，再单独评估归档旧前端，不能连同 `worker/`、数据库迁移和运维脚本一起删除。

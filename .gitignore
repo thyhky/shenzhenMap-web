@@ -14,4 +14,5 @@ seed/*.sql
 seed/update-parts/
 backups/
 *.log
+.production-data-update.lock
 miniprogram/project.private.config.json
