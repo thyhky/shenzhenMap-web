@@ -2,8 +2,8 @@
   "name": "深圳住区观察",
   "appid": "__UNI__SHENZHEN_HOUSING_ATLAS",
   "description": "深圳小区挂牌价格、学校和学区研究地图",
-  "versionName": "1.2.0",
-  "versionCode": "120",
+  "versionName": "1.2.1",
+  "versionCode": "121",
   "transformPx": false,
   "h5": {
     "router": {
