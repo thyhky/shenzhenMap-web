@@ -135,6 +135,12 @@ if (start === undefined && !flag('--skip-sync')) {
 }
 if (start === undefined) {
   steps.push({
+    desc: 'Reject stale or truncated source snapshots',
+    cmd: process.execPath,
+    args: [resolve(projectRoot, 'scripts', 'validate-source-snapshot.mjs'), verifyUrl],
+    cwd: projectRoot,
+  })
+  steps.push({
     desc: 'Generate SQL update parts from data snapshot',
     cmd: process.execPath,
     args: [resolve(projectRoot, 'scripts', 'generate-update.mjs')],

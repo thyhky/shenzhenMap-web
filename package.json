@@ -23,6 +23,7 @@
     "db:update:local": "npm run update:generate && wrangler d1 execute DB --local --file seed/update.sql",
     "db:update:remote": "npm run update:generate && node scripts/execute-update-parts.mjs",
     "sync:data": "node scripts/sync-data.mjs",
+    "validate:data": "node scripts/validate-source-snapshot.mjs",
     "prune:history": "node scripts/prune-price-history.mjs",
     "uni:typecheck": "npm --prefix uniapp run type-check",
     "uni:build:h5": "npm --prefix uniapp run build:h5",

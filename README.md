@@ -174,6 +174,8 @@ npm run db:update:remote
 
 增量更新只修改有变化的小区和街道。每次导入无论价格是否变化，都会为每个小区记录一条"每日快照"到 `price_history`（`migrations/0014` 触发器，同一导入日幂等）；价格变化本身也会追加记录。历史保留 90 天，由 `npm run prune:history`（`scripts/prune-price-history.mjs`）循环清理，已接入 pipeline。
 
+生产流水线会在修改 D1 前比较本地快照与线上 `sourceObservedAt`，拒绝时间更旧或小区数量异常减少的快照。也可单独运行 `npm run validate:data` 检查。
+
 4. 构建并部署：
 
 ```bash
