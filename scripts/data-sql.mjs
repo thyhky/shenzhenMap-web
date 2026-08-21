@@ -30,16 +30,21 @@ export function coordinateBounds(geometry) {
   return bounds
 }
 
-export async function loadSourceData(sourceRoot) {
-  const estates = JSON.parse(await readFile(resolve(sourceRoot, 'estates.geojson'), 'utf8'))
-  const streets = JSON.parse(await readFile(resolve(sourceRoot, 'streets.geojson'), 'utf8'))
-  const schools = JSON.parse(await readFile(resolve(sourceRoot, 'schools.geojson'), 'utf8'))
-  let schoolZones = null
-  try {
-    schoolZones = JSON.parse(await readFile(resolve(sourceRoot, 'school_zones.geojson'), 'utf8'))
-  } catch {
-    // school_zones is optional for now (school-scopes stays a point-only layer)
+export function requireFeatureCollection(name, collection) {
+  if (collection?.type !== 'FeatureCollection' || !Array.isArray(collection.features)) {
+    throw new Error(`${name} must be a GeoJSON FeatureCollection`)
   }
+  if (collection.features.length === 0) {
+    throw new Error(`Refusing to generate SQL from an empty ${name} collection`)
+  }
+  return collection
+}
+
+export async function loadSourceData(sourceRoot) {
+  const estates = requireFeatureCollection('estates', JSON.parse(await readFile(resolve(sourceRoot, 'estates.geojson'), 'utf8')))
+  const streets = requireFeatureCollection('streets', JSON.parse(await readFile(resolve(sourceRoot, 'streets.geojson'), 'utf8')))
+  const schools = requireFeatureCollection('schools', JSON.parse(await readFile(resolve(sourceRoot, 'schools.geojson'), 'utf8')))
+  const schoolZones = requireFeatureCollection('school zones', JSON.parse(await readFile(resolve(sourceRoot, 'school_zones.geojson'), 'utf8')))
   return { estates, streets, schools, schoolZones }
 }
 

@@ -17,14 +17,20 @@ const sourceObservedAt = estates.features.reduce(
     : latest,
   '',
 )
+const schoolSourceObservedAt = schools.features.reduce(
+  (latest, feature) => feature.properties.source_published > latest
+    ? feature.properties.source_published
+    : latest,
+  '',
+)
 const scopes = dataScopes.map((scope) => ({
   ...scope,
   contentVersion: scope.id === 'estates'
     ? scopeContentVersion(estates)
     : scope.id === 'streets' ? scopeContentVersion(streets)
-      : scope.id === 'school-scopes' ? scopeContentVersion(schools) : null,
+      : scope.id === 'school-scopes' ? scopeContentVersion({ schools, schoolZones }) : null,
   sourceObservedAt: scope.id === 'estates' ? sourceObservedAt
-    : scope.id === 'school-scopes' ? schools.features[0]?.properties.source_published ?? null : null,
+    : scope.id === 'school-scopes' ? schoolSourceObservedAt || null : null,
   importedAt: scope.status === 'active' ? now : null,
 }))
 

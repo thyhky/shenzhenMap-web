@@ -66,7 +66,7 @@ H5 输出到 `uniapp/dist/build/h5/`；微信小程序输出到 `uniapp/dist/bui
 - 原客户端 Worker 测试：21/21 通过
 - 原 Web 类型检查和生产构建：通过
 
-`npm audit --omit=dev` 当前报告 31 个 DCloud 编译器依赖链告警。自动 `audit fix --force` 会将 `uni-cli-shared`、`uni-mp-weixin` 等核心包替换为不兼容旧版本，因此不执行强制修复；后续升级官方 uni-app 编译器时重新审计。该 CLI 仅用于构建，不作为线上 Node 服务运行。
+`npm audit` 当前报告 42 个 DCloud 编译器依赖链告警（14 low、15 moderate、13 high）。自动 `audit fix --force` 会将 `uni-cli-shared`、`uni-mp-weixin` 等核心包替换为不兼容旧版本，因此不执行强制修复；后续升级官方 uni-app 编译器时重新审计。该 CLI 仅用于构建，不作为线上 Node 服务运行。
 
 ## 地图迁移进度
 

@@ -101,12 +101,7 @@ export function getRanking(filters: EstateFilters, sort: RankingSort, page = 1):
 
 export function getHeatmap(filters: EstateFilters): Promise<HeatmapResponse> {
   return requestJson('/api/heatmap', {
-    district: filters.district,
-    street: filters.street,
-    pricedOnly: filters.pricedOnly ? 1 : 0,
-    missingRefPrice: filters.missingRefPrice ? 1 : 0,
-    minPrice: Math.round(filters.minWan * 10000),
-    maxPrice: Math.round(filters.maxWan * 10000),
+    ...baseFilterParams(filters),
   })
 }
 

@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { access, readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runWrangler } from './run-wrangler.mjs'
@@ -12,6 +13,7 @@ const uniRoot = resolve(projectRoot, 'uniapp')
 const uniBin = resolve(uniRoot, 'node_modules', '@dcloudio', 'vite-plugin-uni', 'bin', 'uni.js')
 const uniVueTscBin = resolve(uniRoot, 'node_modules', 'vue-tsc', 'bin', 'vue-tsc.js')
 const defaultUrl = 'https://map.okzer.xyz'
+const productionConfig = 'wrangler.uni-production.jsonc'
 
 const args = process.argv.slice(2)
 const flag = (name) => args.includes(name)
@@ -30,11 +32,11 @@ if (flag('--help') || flag('-h')) {
 One-shot pipeline: sync data -> generate SQL parts -> migrate remote D1
 -> apply parts -> optionally build/deploy a selected client -> verify.
 
-  --sync-from=DIR   source webmap dir for sync-data (default: C:\\code\\Codex\\fetch_house_prices\\webmap)
+  --sync-from=DIR   source webmap dir for sync-data (default: sibling fetch_house_prices/webmap)
   --skip-sync       use the existing ./data snapshot without re-syncing
   --start=N         resume applying update parts from part N (reuses the
-                    existing generated parts, so the import timestamp stays
-                    consistent; parts are NOT regenerated)
+                    existing generated parts and skips data synchronization,
+                    so the import timestamp stays consistent)
   --skip-backup     do not export the remote D1 backup
   --skip-migrate    do not apply pending D1 migrations
   --skip-deploy     do not build/deploy the worker
@@ -49,10 +51,11 @@ One-shot pipeline: sync data -> generate SQL parts -> migrate remote D1
 const knownFlags = new Set([
   '--help', '-h', '--skip-sync', '--skip-migrate', '--skip-deploy', '--skip-verify', '--skip-backup', '--uni-client', '--legacy-client',
 ])
-const unknown = args.filter((argument) => {
-  const name = argument.includes('=') ? argument.slice(0, argument.indexOf('=')) : argument
-  return !knownFlags.has(name) && name !== '--sync-from' && name !== '--start' && name !== '--url'
-})
+const valueFlags = ['--sync-from', '--start', '--url']
+const unknown = args.filter((argument) => (
+  !knownFlags.has(argument)
+  && !valueFlags.some((name) => argument.startsWith(`${name}=`))
+))
 if (unknown.length) {
   throw new Error(`Unknown argument(s): ${unknown.join(', ')} (see --help)`)
 }
@@ -61,10 +64,65 @@ const start = valueOf('--start')
 if (start !== undefined && !(/^[1-9]\d*$/.test(start))) {
   throw new Error(`Invalid --start value: ${start}`)
 }
+if (start !== undefined && valueOf('--sync-from') !== undefined) {
+  throw new Error('--start cannot be combined with --sync-from because resume must reuse the existing snapshot')
+}
+if (start !== undefined) {
+  const partsRoot = resolve(projectRoot, 'seed', 'update-parts')
+  const manifestPath = resolve(partsRoot, 'manifest.json')
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+  if (!Array.isArray(manifest.parts) || Number(start) > manifest.parts.length) {
+    throw new Error(`--start=${start} exceeds the generated update part count (${manifest.parts?.length ?? 0})`)
+  }
+  for (const name of manifest.parts.slice(Number(start) - 1)) {
+    const partPath = typeof name === 'string' ? resolve(partsRoot, name) : ''
+    if (!partPath || dirname(partPath) !== partsRoot) throw new Error(`Invalid update part in manifest: ${name}`)
+    await access(partPath)
+  }
+}
 const verifyUrl = valueOf('--url') ?? defaultUrl
+let parsedVerifyUrl
+try {
+  parsedVerifyUrl = new URL(verifyUrl)
+} catch {
+  throw new Error(`Invalid --url value: ${verifyUrl}`)
+}
+if (!['http:', 'https:'].includes(parsedVerifyUrl.protocol)) {
+  throw new Error(`Invalid --url protocol: ${parsedVerifyUrl.protocol}`)
+}
 
 const steps = []
-if (!flag('--skip-sync')) {
+steps.push({
+  desc: 'Run data and Worker tests',
+  cmd: process.execPath,
+  args: [
+    '--test',
+    resolve(projectRoot, 'tests', 'data-import.test.mjs'),
+    resolve(projectRoot, 'tests', 'worker.test.mjs'),
+  ],
+  cwd: projectRoot,
+})
+if (!flag('--skip-deploy') && deployClient) {
+  steps.push({
+    desc: deployClient === 'uni' ? 'Typecheck uni-app client' : 'Typecheck legacy Web client',
+    cmd: process.execPath,
+    args: deployClient === 'uni' ? [uniVueTscBin, '--noEmit'] : [vueTscBin, '-p', 'tsconfig.app.json', '--noEmit'],
+    cwd: deployClient === 'uni' ? uniRoot : projectRoot,
+  })
+  steps.push({
+    desc: 'Typecheck Worker',
+    cmd: process.execPath,
+    args: [tscBin, '-p', 'tsconfig.worker.json', '--noEmit'],
+    cwd: projectRoot,
+  })
+  steps.push({
+    desc: deployClient === 'uni' ? 'Build uni-app H5 assets' : 'Build legacy Web assets',
+    cmd: process.execPath,
+    args: deployClient === 'uni' ? [uniBin, 'build'] : [viteBin, 'build'],
+    cwd: deployClient === 'uni' ? uniRoot : projectRoot,
+  })
+}
+if (start === undefined && !flag('--skip-sync')) {
   steps.push({
     desc: 'Sync GeoJSON snapshot from data workshop',
     cmd: process.execPath,
@@ -95,7 +153,7 @@ if (!flag('--skip-migrate')) {
   steps.push({
     desc: 'Apply pending D1 migrations (remote)',
     cmd: wrangler,
-    args: ['d1', 'migrations', 'apply', 'DB', '--remote'],
+    args: ['d1', 'migrations', 'apply', 'DB', '--remote', '--config', productionConfig],
     cwd: projectRoot,
     donePatterns: [/Successfully created \d+ migration/, /Executed \d+ commands/, /No migrations to apply!/, /already applied/],
     failPatterns: [/^X /, /fetch failed/i, /ERROR/i],
@@ -117,24 +175,6 @@ steps.push({
   cwd: projectRoot,
 })
 if (!flag('--skip-deploy') && deployClient) {
-  steps.push({
-    desc: deployClient === 'uni' ? 'Typecheck uni-app client' : 'Typecheck legacy Web client',
-    cmd: process.execPath,
-    args: deployClient === 'uni' ? [uniVueTscBin, '--noEmit'] : [vueTscBin, '-p', 'tsconfig.app.json', '--noEmit'],
-    cwd: deployClient === 'uni' ? uniRoot : projectRoot,
-  })
-  steps.push({
-    desc: 'Typecheck (worker tsc)',
-    cmd: process.execPath,
-    args: [tscBin, '-p', 'tsconfig.worker.json', '--noEmit'],
-    cwd: projectRoot,
-  })
-  steps.push({
-    desc: deployClient === 'uni' ? 'Build uni-app H5 assets' : 'Build legacy Web assets',
-    cmd: process.execPath,
-    args: deployClient === 'uni' ? [uniBin, 'build'] : [viteBin, 'build'],
-    cwd: deployClient === 'uni' ? uniRoot : projectRoot,
-  })
   steps.push({
     desc: 'Deploy worker',
     cmd: process.execPath,

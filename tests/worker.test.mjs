@@ -160,10 +160,10 @@ async function setup() {
   const cache = new MemoryCache()
   globalThis.caches = { default: cache }
   const env = { DB: new D1Mock(database) }
-  async function request(path) {
+  async function request(path, init) {
     const pending = []
     const response = await worker.fetch(
-      new Request(`https://example.test${path}`),
+      new Request(`https://example.test${path}`, init),
       env,
       { waitUntil(promise) { pending.push(promise) } },
     )
@@ -421,7 +421,10 @@ test('ranking paginates with continuous ranks and filters rent samples', async (
 test('ranking CSV includes BOM, school fields, and download headers', async () => {
   const { database, request } = await setup()
   database.exec('UPDATE estates SET rent_price = 80, rent_yield = 3.2, rent_samples = 5 WHERE id = 1')
-  const response = await request('/api/export/rent-yield.csv?district=%E5%85%89%E6%98%8E%E5%8C%BA&minPrice=0&maxPrice=500000&minSamples=3&limit=10')
+  const response = await request(
+    '/api/export/rent-yield.csv?district=%E5%85%89%E6%98%8E%E5%8C%BA&minPrice=0&maxPrice=500000&minSamples=3&limit=10',
+    { headers: { Accept: 'text/html', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Dest': 'document' } },
+  )
   const body = await response.text()
   assert.equal(response.status, 200)
   assert.match(response.headers.get('Content-Type'), /text\/csv/)
@@ -439,4 +442,19 @@ test('heatmap returns null bounds for an empty district', async () => {
   assert.equal(body.total, 0)
   assert.equal(body.bounds, null)
   assert.deepEqual(body.points, [])
+})
+
+test('heatmap filters and separates cache entries by keyword', async () => {
+  const { request } = await setup()
+  const first = await request('/api/heatmap?district=%E6%B5%8B%E8%AF%95%E5%8C%BA&q=%E6%B5%8B%E8%AF%95%E5%B0%8F%E5%8C%BA24&minPrice=0&maxPrice=500000')
+  const firstBody = await first.json()
+  assert.equal(first.status, 200)
+  assert.equal(first.headers.get('X-Worker-Cache'), 'MISS')
+  assert.equal(firstBody.total, 1)
+
+  const different = await request('/api/heatmap?district=%E6%B5%8B%E8%AF%95%E5%8C%BA&q=%E6%B5%8B%E8%AF%95%E5%B0%8F%E5%8C%BA23&minPrice=0&maxPrice=500000')
+  assert.equal(different.headers.get('X-Worker-Cache'), 'MISS')
+
+  const equivalent = await request('/api/heatmap?maxPrice=500000&minPrice=0&q=%E6%B5%8B%E8%AF%95%E5%B0%8F%E5%8C%BA24&district=%E6%B5%8B%E8%AF%95%E5%8C%BA')
+  assert.equal(equivalent.headers.get('X-Worker-Cache'), 'HIT')
 })

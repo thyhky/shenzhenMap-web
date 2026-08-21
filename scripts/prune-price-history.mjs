@@ -6,6 +6,7 @@ import { runWrangler } from './run-wrangler.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const wrangler = resolve(projectRoot, 'node_modules', 'wrangler', 'bin', 'wrangler.js')
+const productionConfig = 'wrangler.uni-production.jsonc'
 
 const args = process.argv.slice(2)
 if (args.includes('--help') || args.includes('-h')) {
@@ -14,15 +15,20 @@ Delete price history older than --days (default 90) to keep storage bounded.`)
   process.exit(0)
 }
 const daysArg = args.find((argument) => argument.startsWith('--days='))
+const unknown = args.filter((argument) => argument !== '--local' && !argument.startsWith('--days='))
+if (unknown.length) {
+  throw new Error(`Unknown argument(s): ${unknown.join(', ')} (see --help)`)
+}
 const days = daysArg ? Number(daysArg.slice('--days='.length)) : 90
 if (!Number.isInteger(days) || days < 1 || days > 3650) {
   throw new Error(`Invalid --days value: ${daysArg}`)
 }
 const target = args.includes('--local') ? '--local' : '--remote'
+const configArgs = target === '--remote' ? ['--config', productionConfig] : []
 
 await runWrangler(
   wrangler,
-  ['d1', 'execute', 'DB', target, '--command', `DELETE FROM price_history WHERE date(captured_at) < date('now', '-${days} days')`],
+  ['d1', 'execute', 'DB', target, '--command', `DELETE FROM price_history WHERE date(captured_at) < date('now', '-${days} days')`, ...configArgs],
   {
     cwd: projectRoot,
     donePatterns: [/"success": true/, /executed successfully/i],

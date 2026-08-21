@@ -91,6 +91,7 @@ export function getSchoolZones(signal?: AbortSignal): Promise<SchoolZoneFeatureC
 
 export function getHeatmap(filters: EstateFilters, signal?: AbortSignal): Promise<HeatmapResponse> {
   const params = new URLSearchParams({
+    q: filters.keyword.trim(),
     district: filters.district,
     street: filters.street,
     pricedOnly: filters.pricedOnly ? '1' : '0',

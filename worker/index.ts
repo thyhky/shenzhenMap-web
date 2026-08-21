@@ -1080,6 +1080,7 @@ function canonicalCachePath(url: URL): string | null {
   if (url.pathname === '/api/heatmap') {
     const filters = parseEstateFilters(url.searchParams)
     const params = new URLSearchParams({
+      q: filters.keyword,
       district: filters.district,
       street: filters.street,
       pricedOnly: filters.pricedOnly ? '1' : '0',
@@ -1237,7 +1238,7 @@ export default {
     if (!url.pathname.startsWith('/api/')) {
       return env.ASSETS.fetch(request)
     }
-    if (isDirectApiNavigation(request)) {
+    if (isDirectApiNavigation(request) && !url.pathname.startsWith('/api/export/')) {
       return json({ error: 'API 仅供站点页面内部调用' }, { status: 404, headers: NO_STORE_HEADERS })
     }
     try {

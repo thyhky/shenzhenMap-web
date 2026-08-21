@@ -2,7 +2,7 @@
 
 独立工程（`C:\code\Codex\shenzhenMap-web`），与数据车间解耦。前端只负责交互和展示，小区及街道数据存储在 Cloudflare D1，由 Worker 按当前地图范围提供。
 
-本仓库公开的是应用源码和数据处理结构，不包含真实小区、价格、学校、学区快照、生成 SQL、生产配置或密钥。公开仓库不能直接复现当前线上数据，需要准备自己的数据快照和 Cloudflare 资源。
+本仓库公开的是应用源码、数据处理结构和 Worker 资源配置，不包含真实小区、价格、学校、学区快照、生成 SQL、Cloudflare 登录凭据或其他密钥。公开仓库不能直接复现当前线上数据，需要准备自己的数据快照和 Cloudflare 资源。
 
 数据车间 `fetch_house_prices`（私有仓库）已提交全部主数据与 `webmap/` 构建产物（见下文"从 GitHub 重建"），因此从 GitHub 拉取两个仓库后可以重建完整本地工作区。
 
@@ -18,12 +18,14 @@
 
 ## 本地运行
 
+需要 Node.js 24 或更高版本。建议使用 lockfile 安装依赖：
+
 先复制 `wrangler.example.jsonc` 为本地 `wrangler.jsonc`，填写自己的 Worker 名称和 D1 配置；本地数据文件请参见 `data/README.md`。
 
 完整本地预览使用 Wrangler Worker、Assets 和本地 D1：
 
 ```bash
-npm install
+npm ci
 npm run db:setup:local
 npm run dev
 ```
@@ -106,7 +108,8 @@ uni-app 发布命令：
 ```bash
 npm run deploy:uni:preview       # 独立 Workers 预览地址
 npm run deploy:uni:production    # 验收后切换 map.okzer.xyz
-npm run deploy                   # 重新部署旧 Web 静态资源
+npm run deploy                   # 等同于 deploy:uni:production
+npm run deploy:legacy            # 显式重新部署旧 Web 静态资源
 npm run pipeline:uni             # 生产切换后的每日数据流水线
 npm run rollback:worker          # 回滚 Worker/API 到上一部署版本
 ```
@@ -115,7 +118,7 @@ npm run rollback:worker          # 回滚 Worker/API 到上一部署版本
 
 ## 数据来源
 
-数据快照存放在 `./data/`，由 `npm run sync:data` 从独立的私有数据车间同步。默认来源是 `C:\code\Codex\fetch_house_prices\webmap`，也可以使用 `DATA_WORKSHOP_PATH` 或 `--from=` 指定其他路径：
+数据快照存放在 `./data/`，由 `npm run sync:data` 从独立的私有数据车间同步。默认来源是当前仓库同级的 `fetch_house_prices/webmap`，也可以使用 `DATA_WORKSHOP_PATH` 或 `--from=` 指定其他路径：
 
 ```powershell
 # 默认并列目录
@@ -212,11 +215,12 @@ npm run deploy
 新机器搭建步骤：
 
 ```powershell
-# 1. 克隆并安装依赖
+# 1. 克隆并安装根工程与 uni-app 的独立依赖
 git clone <shenzhenMap-web>
 git clone <fetch_house_prices>
 cd shenzhenMap-web
-npm install
+npm ci
+npm --prefix uniapp ci
 
 # 2. 同步数据（默认读取并列目录 fetch_house_prices/webmap）
 npm run sync:data
@@ -225,7 +229,7 @@ npm run sync:data
 npm run db:setup:local
 npm run dev
 
-# 4. 远程部署（需先 wrangler login，并复制 wrangler.example.jsonc 为 wrangler.jsonc）
+# 4. 远程部署（需先 wrangler login；只有旧 Web 发布需要本地 wrangler.jsonc）
 npm run pipeline          # 同步 -> 生成 parts -> 备份 -> 迁移 -> 应用 -> prune -> 验证当前线上版本
 npm run pipeline:uni      # 同上，并构建/部署 uni-app H5
 npm run pipeline:legacy   # 同上，并构建/部署旧 Web

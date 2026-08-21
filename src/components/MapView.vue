@@ -28,7 +28,6 @@ const emit = defineEmits<{
   snapshot: [value: MapResponse]
   select: [value: EstateDetail]
   'select-school': [value: SchoolFeature]
-  'select-school-zone': [value: SchoolZoneFeature]
   'viewchange': [view: { center: [number, number]; zoom: number }]
   loading: [value: boolean]
   'loading-more': [value: boolean]
@@ -49,6 +48,7 @@ let boundaryController: AbortController | null = null
 let schoolController: AbortController | null = null
 let schoolZoneController: AbortController | null = null
 let detailController: AbortController | null = null
+let selectionRevision = 0
 let estateTimer: ReturnType<typeof setTimeout> | null = null
 let resizeObserver: ResizeObserver | null = null
 let lastSearchKey = ''
@@ -122,12 +122,14 @@ function drawSelectedEstate(estate: EstateDetail) {
 }
 
 async function selectEstate(id: number) {
+  const revision = ++selectionRevision
   detailController?.abort()
   const controller = new AbortController()
   detailController = controller
   emit('detail-loading', true)
   try {
     const estate = await getEstate(id, controller.signal)
+    if (revision !== selectionRevision) return
     drawSelectedEstate(estate)
     emit('select', estate)
   } catch (error) {
@@ -219,6 +221,7 @@ function drawSchools(collection: SchoolFeatureCollection) {
       '点击查看招生范围与咨询电话',
     ]))
     marker.on('click', () => {
+      selectionRevision += 1
       detailController?.abort()
       emit('detail-loading', false)
       emit('select-school', school)
@@ -255,15 +258,28 @@ function drawSchoolZones(collection: SchoolZoneFeatureCollection) {
             ? '官方划片边界'
             : '基于官方招生社区名称的近似范围，非官方边界',
         ]))
-        layer.on('click', () => {
-          const school = schoolData?.features.find((item) => item.properties.id === properties.schoolId)
+        layer.on('click', async () => {
+          const revision = ++selectionRevision
+          let school = schoolData?.features.find((item) => item.properties.id === properties.schoolId)
+          if (!school) {
+            try {
+              schoolData ??= await getSchools()
+              if (revision !== selectionRevision) return
+              school = schoolData.features.find((item) => item.properties.id === properties.schoolId)
+            } catch (error) {
+              if (revision !== selectionRevision) return
+              emit('error', `学校详情加载失败：${(error as Error).message}`)
+              return
+            }
+          }
+          if (revision !== selectionRevision) return
           if (school) {
             detailController?.abort()
             emit('detail-loading', false)
             emit('select-school', school)
             return
           }
-          emit('select-school-zone', feature)
+          emit('error', `未找到 ${properties.name} 的学校详情`)
         })
         layer.bindTooltip(properties.name, { sticky: true, className: 'school-label' })
       }
@@ -404,18 +420,21 @@ async function loadSchoolZones() {
     drawSchoolZones({ type: 'FeatureCollection', scope: 'school-scopes', features: [] })
     return
   }
-  if (schoolZoneData) {
-    drawSchoolZones(schoolZoneData)
-    return
-  }
   schoolZoneController?.abort()
   const controller = new AbortController()
   schoolZoneController = controller
   try {
-    schoolZoneData = await getSchoolZones(controller.signal)
+    schoolZoneData ??= await getSchoolZones(controller.signal)
     drawSchoolZones(schoolZoneData)
   } catch (error) {
     if ((error as Error).name !== 'AbortError') emit('error', `学区范围图层加载失败：${(error as Error).message}`)
+    return
+  }
+  if (schoolData) return
+  try {
+    schoolData = await getSchools(controller.signal)
+  } catch (error) {
+    if ((error as Error).name !== 'AbortError') emit('error', `学校详情加载失败：${(error as Error).message}`)
   }
 }
 

@@ -194,7 +194,14 @@ export interface HeatmapResponse {
     lat: number
     price: number | null
   }>
-  boundaries: StreetFeatureCollection['features']
+  boundaries: Array<{
+    type: 'Feature'
+    properties: {
+      name: string
+      district: string
+    }
+    geometry: GeoJSON.Geometry
+  }>
 }
 
 export interface StreetFeatureCollection {

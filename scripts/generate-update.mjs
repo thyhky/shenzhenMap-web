@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { dataScopes, globalDisclaimer } from './data-catalog.mjs'
@@ -19,14 +19,20 @@ const sourceObservedAt = estates.features.reduce(
     : latest,
   '',
 )
+const schoolSourceObservedAt = schools.features.reduce(
+  (latest, feature) => feature.properties.source_published > latest
+    ? feature.properties.source_published
+    : latest,
+  '',
+)
 const scopes = dataScopes.map((scope) => ({
   ...scope,
   contentVersion: scope.id === 'estates'
     ? scopeContentVersion(estates)
     : scope.id === 'streets' ? scopeContentVersion(streets)
-      : scope.id === 'school-scopes' ? scopeContentVersion(schools) : null,
+      : scope.id === 'school-scopes' ? scopeContentVersion({ schools, schoolZones }) : null,
   sourceObservedAt: scope.id === 'estates' ? sourceObservedAt
-    : scope.id === 'school-scopes' ? schools.features[0]?.properties.source_published ?? null : null,
+    : scope.id === 'school-scopes' ? schoolSourceObservedAt || null : null,
   importedAt: scope.status === 'active' ? importedAt : null,
 }))
 
@@ -49,6 +55,7 @@ const statements = [...estateStatements, ...finalStatements]
 
 await mkdir(dirname(outputFile), { recursive: true })
 await writeFile(outputFile, `${statements.join('\n')}\n`, 'utf8')
+await rm(partsRoot, { recursive: true, force: true })
 await mkdir(partsRoot, { recursive: true })
 const parts = []
 for (let offset = 0; offset < estateStatements.length; offset += 500) {

@@ -186,8 +186,8 @@ function syncUrl() {
     if (current.maxWan !== DEFAULT_MAX_WAN) params.set('maxWan', String(current.maxWan))
     if (current.sort !== 'price-desc') params.set('sort', current.sort)
     if (!showBoundaries.value) params.set('bounds', '0')
-    if (!showSchools.value) params.set('schools', '0')
-    if (!showSchoolZones.value) params.set('zones', '0')
+    if (showSchools.value) params.set('schools', '1')
+    if (showSchoolZones.value) params.set('zones', '1')
     if (lastView) {
       params.set('lat', lastView.center[0].toFixed(4))
       params.set('lng', lastView.center[1].toFixed(4))

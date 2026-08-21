@@ -7,6 +7,7 @@ import { runWrangler } from './run-wrangler.mjs'
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const wrangler = resolve(projectRoot, 'node_modules', 'wrangler', 'bin', 'wrangler.js')
 const backupDir = resolve(projectRoot, 'backups')
+const productionConfig = 'wrangler.uni-production.jsonc'
 const keep = 14
 
 const args = process.argv.slice(2)
@@ -18,6 +19,10 @@ Export the remote D1 database as SQL to backups/, keeping the newest N files.
   process.exit(0)
 }
 const keepArg = args.find((argument) => argument.startsWith('--keep='))
+const unknown = args.filter((argument) => !argument.startsWith('--keep='))
+if (unknown.length) {
+  throw new Error(`Unknown argument(s): ${unknown.join(', ')} (see --help)`)
+}
 if (keepArg && !/^[1-9]\d*$/.test(keepArg.slice('--keep='.length))) {
   throw new Error(`Invalid --keep value: ${keepArg}`)
 }
@@ -30,7 +35,7 @@ const output = resolve(backupDir, `d1-${stamp}.sql`)
 // wrangler on Windows keeps the process alive after finishing, so run-wrangler
 // treats the final "Downloaded ... successfully" line as completion and kills
 // the zombie process tree.
-await runWrangler(wrangler, ['d1', 'export', 'DB', '--remote', '--output', output], {
+await runWrangler(wrangler, ['d1', 'export', 'DB', '--remote', '--output', output, '--config', productionConfig], {
   cwd: projectRoot,
   donePatterns: [/Downloaded .* successfully/i],
   failPatterns: [/^X /, /fetch failed/i, /ERROR/i],

@@ -1,11 +1,12 @@
 import { execFileSync } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
+import { access, readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runWrangler } from './run-wrangler.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const partsRoot = resolve(projectRoot, 'seed', 'update-parts')
+const productionConfig = 'wrangler.uni-production.jsonc'
 const manifest = JSON.parse(await readFile(resolve(partsRoot, 'manifest.json'), 'utf8'))
 const wrangler = resolve(projectRoot, 'node_modules', 'wrangler', 'bin', 'wrangler.js')
 const args = process.argv.slice(2)
@@ -27,11 +28,16 @@ const start = startArgument ? Number(startArgument.split('=')[1]) : 1
 if (!Number.isSafeInteger(start) || start < 1 || start > manifest.parts.length) {
   throw new Error(`Invalid --start value: ${startArgument ?? ''}`)
 }
+for (const name of manifest.parts.slice(start - 1)) {
+  const partPath = typeof name === 'string' ? resolve(partsRoot, name) : ''
+  if (!partPath || dirname(partPath) !== partsRoot) throw new Error(`Invalid update part in manifest: ${name}`)
+  await access(partPath)
+}
 
 for (const [index, name] of manifest.parts.entries()) {
   if (index + 1 < start) continue
   console.log(`Applying update part ${index + 1}/${manifest.parts.length}: ${name}`)
-  await runWrangler(wrangler, ['d1', 'execute', 'DB', '--remote', '--file', resolve(partsRoot, name)], {
+  await runWrangler(wrangler, ['d1', 'execute', 'DB', '--remote', '--file', resolve(partsRoot, name), '--config', productionConfig], {
     cwd: projectRoot,
     donePatterns: [/"success": true/, /executed successfully/i],
     failPatterns: [/^X /, /"success": false/, /fetch failed/i, /ERROR/i],

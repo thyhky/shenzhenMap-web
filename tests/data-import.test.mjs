@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { DatabaseSync } from 'node:sqlite'
-import { dataVersionUpsert, estateInsert, estateUpsert, markEstatesUnlisted, markMissingSchools, markMissingSchoolZones, schoolInsert, schoolUpsert, schoolZoneInsert, schoolZoneUpsert, sourceDataVersion, streetInsert, streetUpsert } from '../scripts/data-sql.mjs'
+import { dataVersionUpsert, estateInsert, estateUpsert, loadSourceData, markEstatesUnlisted, markMissingSchools, markMissingSchoolZones, schoolInsert, schoolUpsert, schoolZoneInsert, schoolZoneUpsert, sourceDataVersion, streetInsert, streetUpsert } from '../scripts/data-sql.mjs'
 
 const estate = {
   geometry: { type: 'Point', coordinates: [114.1, 22.6] },
@@ -199,4 +200,21 @@ test('school zone upserts are idempotent and track missing zones', async () => {
   assert.equal(db.prepare('SELECT is_current FROM school_zones WHERE school_id = ?').get('gm-j-1').is_current, 1)
   db.exec(markMissingSchoolZones({ type: 'FeatureCollection', features: [{ ...zone, properties: { ...zone.properties, school_id: 'gm-j-2' } }] }))
   assert.equal(db.prepare('SELECT is_current FROM school_zones WHERE school_id = ?').get('gm-j-1').is_current, 0)
+})
+
+test('source loading rejects empty or incomplete snapshots', async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'shenzhen-map-data-'))
+  context.after(() => rm(root, { recursive: true, force: true }))
+  const populated = JSON.stringify({ type: 'FeatureCollection', features: [{}] })
+  await Promise.all([
+    writeFile(join(root, 'estates.geojson'), JSON.stringify({ type: 'FeatureCollection', features: [] })),
+    writeFile(join(root, 'streets.geojson'), populated),
+    writeFile(join(root, 'schools.geojson'), populated),
+    writeFile(join(root, 'school_zones.geojson'), populated),
+  ])
+
+  await assert.rejects(loadSourceData(root), /empty estates collection/)
+  await writeFile(join(root, 'estates.geojson'), populated)
+  await rm(join(root, 'school_zones.geojson'))
+  await assert.rejects(loadSourceData(root), /ENOENT/)
 })

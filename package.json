@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "dev": "npm run build && wrangler dev",
     "dev:web": "vite",
@@ -15,8 +18,8 @@
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:seed:local": "wrangler d1 execute DB --local --file seed/seed.sql",
     "db:setup:local": "npm run db:migrate:local && npm run seed:generate && npm run db:seed:local",
-    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "db:seed:remote": "wrangler d1 execute DB --remote --file seed/seed.sql",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote --config wrangler.uni-production.jsonc",
+    "db:seed:remote": "wrangler d1 execute DB --remote --file seed/seed.sql --config wrangler.uni-production.jsonc",
     "db:update:local": "npm run update:generate && wrangler d1 execute DB --local --file seed/update.sql",
     "db:update:remote": "npm run update:generate && node scripts/execute-update-parts.mjs",
     "sync:data": "node scripts/sync-data.mjs",
@@ -29,7 +32,8 @@
     "pipeline:uni": "node scripts/pipeline.mjs --uni-client",
     "pipeline:legacy": "node scripts/pipeline.mjs --legacy-client",
     "verify:remote": "node scripts/verify-deployment.mjs",
-    "deploy": "npm run build && node scripts/deploy-client.mjs legacy",
+    "deploy": "npm run deploy:uni:production",
+    "deploy:legacy": "npm run build && node scripts/deploy-client.mjs legacy",
     "deploy:uni:preview": "npm test && npm run typecheck && npm run uni:typecheck && npm run uni:build:h5 && node scripts/deploy-client.mjs preview",
     "deploy:uni:production": "npm test && npm run typecheck && npm run uni:typecheck && npm run uni:build:h5 && node scripts/deploy-client.mjs production",
     "rollback:worker": "node scripts/deploy-client.mjs rollback"
