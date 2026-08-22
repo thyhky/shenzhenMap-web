@@ -31,6 +31,9 @@ const props = defineProps<{
   showSchoolZones: boolean
   focusBounds: Bounds | null
   focusRevision: number
+  selected: MapSelection | null
+  selectionRevision: number
+  showSelectionPopup: boolean
 }>()
 
 const emit = defineEmits<{
@@ -72,6 +75,59 @@ function priceFillColor(price: number | null) {
   if (price < 90000) return '#ecd28f'
   if (price < 120000) return '#eab08f'
   return '#df9297'
+}
+
+function priceText(price: number | null) {
+  return price ? `${(price / 10000).toFixed(1)}万/㎡` : '暂无价格'
+}
+
+function selectionCoordinate(item: MapSelection): { latitude: number; longitude: number } | null {
+  if ('kind' in item) return wgs84ToGcj02(item.lat, item.lng)
+  const { geometry } = item
+  if (geometry.type === 'Point') {
+    const [longitude, latitude] = geometry.coordinates
+    return wgs84ToGcj02(latitude, longitude)
+  }
+  const ring = geometry.type === 'Polygon' ? geometry.coordinates[0] : geometry.coordinates[0][0]
+  const latitudes = ring.map(([, latitude]) => latitude)
+  const longitudes = ring.map(([longitude]) => longitude)
+  return wgs84ToGcj02(
+    (Math.min(...latitudes) + Math.max(...latitudes)) / 2,
+    (Math.min(...longitudes) + Math.max(...longitudes)) / 2,
+  )
+}
+
+function selectionCallout(item: MapSelection): { title: string; lines: string[] } {
+  if ('kind' in item) {
+    if (item.kind === 'cluster') {
+      return {
+        title: `${item.count} 个小区`,
+        lines: [
+          `${item.pricedCount} 个有有效价格`,
+          `均价 ${priceText(item.avgPrice)}`,
+          '地图已放大，可继续选择具体小区',
+        ],
+      }
+    }
+    return {
+      title: item.name,
+      lines: [
+        `均价 ${priceText(item.price)}`,
+        `租售比 ${item.rentYield == null ? '暂无数据' : `${item.rentYield.toFixed(2)}%`}`,
+        `${item.district} · ${item.street}`,
+      ],
+    }
+  }
+  if (item.geometry.type === 'Point') {
+    return {
+      title: item.properties.name,
+      lines: [`${item.properties.levelLabel} · ${item.properties.district}`, '点击查看招生范围与咨询电话'],
+    }
+  }
+  return {
+    title: item.properties.name,
+    lines: [`${item.properties.levelLabel} · ${item.properties.district}`, '查看招生范围'],
+  }
 }
 
 function itemRadius(item: MapItem) {
@@ -133,7 +189,8 @@ const schoolCircles = computed(() => {
   })
 })
 const circles = computed(() => {
-  return estateCircles.value.concat(schoolCircles.value)
+  const selected = selectedCircle.value
+  return estateCircles.value.concat(schoolCircles.value, selected ? [selected] : [])
 })
 
 const polygonState = computed(() => {
@@ -240,8 +297,28 @@ const polygonState = computed(() => {
 })
 const polygons = computed(() => polygonState.value.overlays)
 
+interface WxMarker {
+  id: number
+  latitude: number
+  longitude: number
+  width: number
+  height: number
+  alpha: number
+  label?: { content: string; color: string; fontSize: number; anchorX: number; anchorY: number }
+  callout?: {
+    content: string
+    color: string
+    fontSize: number
+    borderRadius: number
+    bgColor: string
+    padding: number
+    display: string
+    textAlign: string
+  }
+}
+
 const clusterItems = computed(() => visibleMapItems.value.filter((item) => item.kind === 'cluster'))
-const markers = computed(() => clusterItems.value.map((item, index) => {
+const clusterMarkers = computed<WxMarker[]>(() => clusterItems.value.map((item, index) => {
   const coordinate = wgs84ToGcj02(item.lat, item.lng)
   return {
     id: 1000000 + index,
@@ -259,6 +336,53 @@ const markers = computed(() => clusterItems.value.map((item, index) => {
     },
   }
 }))
+
+const selectedMarker = computed<WxMarker | null>(() => {
+  void props.selectionRevision
+  if (!props.selected || !props.showSelectionPopup) return null
+  const coordinate = selectionCoordinate(props.selected)
+  if (!coordinate) return null
+  const { title, lines } = selectionCallout(props.selected)
+  return {
+    id: 2000000,
+    latitude: coordinate.latitude,
+    longitude: coordinate.longitude,
+    width: 1,
+    height: 1,
+    alpha: 0,
+    callout: {
+      content: [title, ...lines].join('\n'),
+      color: '#17343a',
+      fontSize: 12,
+      borderRadius: 8,
+      bgColor: '#fffdf8',
+      padding: 10,
+      display: 'ALWAYS',
+      textAlign: 'left',
+    },
+  }
+})
+
+const selectedCircle = computed(() => {
+  void props.selectionRevision
+  if (!props.selected) return null
+  const coordinate = selectionCoordinate(props.selected)
+  if (!coordinate) return null
+  return {
+    latitude: coordinate.latitude,
+    longitude: coordinate.longitude,
+    radius: 60,
+    strokeColor: '#ffffff',
+    strokeWidth: 3,
+    color: '#b64c39',
+    fillColor: '#b64c39',
+    fillOpacity: 0.35,
+  }
+})
+
+const markers = computed<WxMarker[]>(() => (
+  clusterMarkers.value.concat(selectedMarker.value ? [selectedMarker.value] : [])
+))
 
 function selectItem(item: MapSelection) {
   emit('select', item)

@@ -452,6 +452,7 @@ interface WeixinCanvasNode {
   width: number
   height: number
   getContext(type: '2d'): DrawingContext & { scale(x: number, y: number): void }
+  createImage(): { src: string; onload: (() => void) | null; onerror: (() => void) | null }
 }
 
 function queryHeatmapCanvas(attempt = 0): Promise<{ node: WeixinCanvasNode; width: number; height: number }> {
@@ -525,7 +526,13 @@ async function renderHeatmapWeixin(data: HeatmapResponse) {
   result.node.height = Math.floor(result.height * backingScale)
   const context = result.node.getContext('2d')
   context.scale(backingScale, backingScale)
-  await renderHeatmap(context, result.width, result.height, data)
+  const loadTileImage = (src: string) => new Promise<unknown | null>((resolve) => {
+    const image = result.node.createImage()
+    image.onload = () => resolve(image)
+    image.onerror = () => resolve(null)
+    image.src = src
+  })
+  await renderHeatmap(context, result.width, result.height, data, { tileProvider: 'tencent', loadTileImage })
   const filePath = await new Promise<string>((resolve, reject) => {
     uni.canvasToTempFilePath({
       canvasId: 'heatmap-canvas',
@@ -846,6 +853,9 @@ onLoad(async () => {
       :show-school-zones="visibleLayers.zones"
       :focus-bounds="focusBounds"
       :focus-revision="focusRevision"
+      :selected="selected"
+      :selection-revision="selectionRevision"
+      :show-selection-popup="showSelectionPopup"
       @select="selectMapItem"
       @focus="focusMap"
       @viewport-change="updateViewport"

@@ -1,4 +1,5 @@
 import type { HeatmapResponse, Position } from '@/domain/types'
+import { wgs84ToGcj02 } from '@/utils/coordinates'
 
 export interface DrawingContext {
   fillStyle: unknown
@@ -30,6 +31,9 @@ function heatmapColor(price: number | null) {
 const OSM_TILE = (z: number, x: number, y: number) =>
   `https://a.tile.openstreetmap.org/${z}/${((x % 2 ** z) + 2 ** z) % 2 ** z}/${y}.png`
 
+const TENCENT_TILE = (z: number, x: number, y: number) =>
+  `https://rt${((x + y) % 4)}.map.gtimg.com/tile?z=${z}&x=${x}&y=${y}&type=roadmap&styleid=1`
+
 function lngToTileX(lng: number, z: number) {
   return Math.floor(((lng + 180) / 360) * 2 ** z)
 }
@@ -56,7 +60,18 @@ async function loadOsmTile(z: number, x: number, y: number): Promise<HTMLImageEl
   })
 }
 
-export async function renderHeatmap(context: DrawingContext, width: number, height: number, data: HeatmapResponse) {
+export interface HeatmapRenderOptions {
+  tileProvider?: 'osm' | 'tencent'
+  loadTileImage?: (src: string) => Promise<unknown | null>
+}
+
+export async function renderHeatmap(
+  context: DrawingContext,
+  width: number,
+  height: number,
+  data: HeatmapResponse,
+  options: HeatmapRenderOptions = {},
+) {
   if (!data.bounds) throw new Error('当前范围没有可导出的数据')
   const boundaryPoints = data.boundaries.flatMap((feature) => {
     const polygons = feature.geometry.type === 'Polygon' ? [feature.geometry.coordinates] : feature.geometry.coordinates
@@ -83,7 +98,8 @@ export async function renderHeatmap(context: DrawingContext, width: number, heig
     height - padding - (latitude - projectionBounds.south) * scale - (drawHeight - latitudeSpan * scale) / 2,
   ]
 
-  const drewTiles = await drawOsmBackground(context, width, height, projectionBounds, scale, project)
+  const provider = options.tileProvider ?? 'osm'
+  const drewTiles = await drawTileBackground(context, provider, options.loadTileImage, width, height, projectionBounds, scale, project)
   if (!drewTiles) {
     context.fillStyle = '#e8e1d4'
     context.fillRect(0, 0, width, height)
@@ -131,7 +147,7 @@ export async function renderHeatmap(context: DrawingContext, width: number, heig
   context.font = `${Math.max(9, Math.round(width * 0.0075))}px sans-serif`
   context.fillText('颜色：小区挂牌均价；每个圆点代表一个小区；仅供研究参考', padding + 8, height - padding * 0.37)
 
-  const attr = '底图 © OpenStreetMap'
+  const attr = provider === 'tencent' ? '底图 © 腾讯地图' : '底图 © OpenStreetMap'
   const attrW = Math.max(width * 0.16, 120)
   context.fillStyle = 'rgba(250, 246, 237, 0.92)'
   context.fillRect(width - padding - attrW, height - padding * 0.62, attrW, padding * 0.36)
@@ -139,24 +155,41 @@ export async function renderHeatmap(context: DrawingContext, width: number, heig
   context.fillText(attr, width - padding - attrW + 8, height - padding * 0.37)
 }
 
-async function drawOsmBackground(
+async function drawTileBackground(
   context: DrawingContext,
+  provider: 'osm' | 'tencent',
+  loadTileImage: ((src: string) => Promise<unknown | null>) | undefined,
   width: number,
   height: number,
   bounds: { west: number; south: number; east: number; north: number },
   scale: number,
   project: (lngLat: Position) => [number, number],
 ): Promise<boolean> {
-  if (typeof document === 'undefined') return false
+  let sourceBounds = bounds
+  if (provider === 'tencent') {
+    const northWest = wgs84ToGcj02(bounds.north, bounds.west)
+    const southEast = wgs84ToGcj02(bounds.south, bounds.east)
+    sourceBounds = {
+      west: northWest.longitude,
+      south: southEast.latitude,
+      east: southEast.longitude,
+      north: northWest.latitude,
+    }
+  } else if (typeof document === 'undefined' && !loadTileImage) {
+    return false
+  }
   const zoom = Math.max(1, Math.min(19, Math.floor(Math.log2((scale * 360) / 256))))
-  const x0 = lngToTileX(bounds.west, zoom)
-  const x1 = lngToTileX(bounds.east, zoom)
-  const y0 = latToTileY(bounds.north, zoom)
-  const y1 = latToTileY(bounds.south, zoom)
+  const x0 = lngToTileX(sourceBounds.west, zoom)
+  const x1 = lngToTileX(sourceBounds.east, zoom)
+  const y0 = latToTileY(sourceBounds.north, zoom)
+  const y1 = latToTileY(sourceBounds.south, zoom)
   let drawn = false
   for (let tx = x0; tx <= x1; tx++) {
     for (let ty = y0; ty <= y1; ty++) {
-      const img = await loadOsmTile(zoom, tx, ty)
+      const wrappedX = ((tx % 2 ** zoom) + 2 ** zoom) % 2 ** zoom
+      const img = provider === 'tencent'
+        ? (loadTileImage ? await loadTileImage(TENCENT_TILE(zoom, wrappedX, ty)) : null)
+        : await loadOsmTile(zoom, wrappedX, ty)
       if (!img) continue
       const [sx, sy] = project([tileXToLng(tx, zoom), tileYToLat(ty, zoom)])
       const [ex, ey] = project([tileXToLng(tx + 1, zoom), tileYToLat(ty + 1, zoom)])
