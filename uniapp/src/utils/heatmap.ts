@@ -14,6 +14,7 @@ export interface DrawingContext {
   fillRect(x: number, y: number, width: number, height: number): void
   fillText(text: string, x: number, y: number): void
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void
+  drawImage(image: unknown, x: number, y: number, w: number, h: number): void
 }
 
 function heatmapColor(price: number | null) {
@@ -26,7 +27,36 @@ function heatmapColor(price: number | null) {
   return 'rgba(187, 62, 69, 0.66)'
 }
 
-export function renderHeatmap(context: DrawingContext, width: number, height: number, data: HeatmapResponse) {
+const OSM_TILE = (z: number, x: number, y: number) =>
+  `https://a.tile.openstreetmap.org/${z}/${((x % 2 ** z) + 2 ** z) % 2 ** z}/${y}.png`
+
+function lngToTileX(lng: number, z: number) {
+  return Math.floor(((lng + 180) / 360) * 2 ** z)
+}
+function latToTileY(lat: number, z: number) {
+  const rad = (lat * Math.PI) / 180
+  return Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * 2 ** z)
+}
+function tileXToLng(x: number, z: number) {
+  return (x / 2 ** z) * 360 - 180
+}
+function tileYToLat(y: number, z: number) {
+  const n = Math.PI - (2 * Math.PI * y) / 2 ** z
+  return (180 / Math.PI) * Math.atan(Math.sinh(n))
+}
+
+async function loadOsmTile(z: number, x: number, y: number): Promise<HTMLImageElement | null> {
+  if (typeof document === 'undefined') return null
+  return new Promise((resolve) => {
+    const img = document.createElement('img')
+    img.crossOrigin = 'anonymous'
+    img.onload = () => resolve(img)
+    img.onerror = () => resolve(null)
+    img.src = OSM_TILE(z, x, y)
+  })
+}
+
+export async function renderHeatmap(context: DrawingContext, width: number, height: number, data: HeatmapResponse) {
   if (!data.bounds) throw new Error('当前范围没有可导出的数据')
   const boundaryPoints = data.boundaries.flatMap((feature) => {
     const polygons = feature.geometry.type === 'Polygon' ? [feature.geometry.coordinates] : feature.geometry.coordinates
@@ -53,8 +83,15 @@ export function renderHeatmap(context: DrawingContext, width: number, height: nu
     height - padding - (latitude - projectionBounds.south) * scale - (drawHeight - latitudeSpan * scale) / 2,
   ]
 
-  context.fillStyle = '#e8e1d4'
-  context.fillRect(0, 0, width, height)
+  const drewTiles = await drawOsmBackground(context, width, height, projectionBounds, scale, project)
+  if (!drewTiles) {
+    context.fillStyle = '#e8e1d4'
+    context.fillRect(0, 0, width, height)
+  } else {
+    context.fillStyle = 'rgba(255, 255, 255, 0.16)'
+    context.fillRect(0, 0, width, height)
+  }
+
   context.fillStyle = '#17343a'
   context.font = `700 ${Math.max(20, Math.round(width * 0.019))}px sans-serif`
   context.fillText(`${data.label} 小区价格密度图`, padding, titleY)
@@ -93,6 +130,41 @@ export function renderHeatmap(context: DrawingContext, width: number, height: nu
   context.fillStyle = '#617074'
   context.font = `${Math.max(9, Math.round(width * 0.0075))}px sans-serif`
   context.fillText('颜色：小区挂牌均价；每个圆点代表一个小区；仅供研究参考', padding + 8, height - padding * 0.37)
+
+  const attr = '底图 © OpenStreetMap'
+  const attrW = Math.max(width * 0.16, 120)
+  context.fillStyle = 'rgba(250, 246, 237, 0.92)'
+  context.fillRect(width - padding - attrW, height - padding * 0.62, attrW, padding * 0.36)
+  context.fillStyle = '#617074'
+  context.fillText(attr, width - padding - attrW + 8, height - padding * 0.37)
+}
+
+async function drawOsmBackground(
+  context: DrawingContext,
+  width: number,
+  height: number,
+  bounds: { west: number; south: number; east: number; north: number },
+  scale: number,
+  project: (lngLat: Position) => [number, number],
+): Promise<boolean> {
+  if (typeof document === 'undefined') return false
+  const zoom = Math.max(1, Math.min(19, Math.floor(Math.log2((scale * 360) / 256))))
+  const x0 = lngToTileX(bounds.west, zoom)
+  const x1 = lngToTileX(bounds.east, zoom)
+  const y0 = latToTileY(bounds.north, zoom)
+  const y1 = latToTileY(bounds.south, zoom)
+  let drawn = false
+  for (let tx = x0; tx <= x1; tx++) {
+    for (let ty = y0; ty <= y1; ty++) {
+      const img = await loadOsmTile(zoom, tx, ty)
+      if (!img) continue
+      const [sx, sy] = project([tileXToLng(tx, zoom), tileYToLat(ty, zoom)])
+      const [ex, ey] = project([tileXToLng(tx + 1, zoom), tileYToLat(ty + 1, zoom)])
+      context.drawImage(img, Math.min(sx, ex), Math.min(sy, ey), Math.abs(ex - sx), Math.abs(ey - sy))
+      drawn = true
+    }
+  }
+  return drawn
 }
 
 export function heatmapFilename(label: string) {

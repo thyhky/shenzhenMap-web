@@ -198,7 +198,6 @@ const selectedName = computed(() => {
   }
   return selected.value.properties.name
 })
-const filtersDirty = computed(() => JSON.stringify(draft) !== JSON.stringify(applied))
 const desktopWorkspaceClass = computed(() => ({
   'filters-hidden': !desktopFiltersOpen.value,
   'right-hidden': !desktopRightOpen.value,
@@ -390,10 +389,10 @@ function loadMoreRanking() {
 }
 
 async function exportCsv() {
-  if (csvLoading.value || filtersDirty.value) return
+  if (csvLoading.value) return
   csvLoading.value = true
   error.value = ''
-  const url = getRankingExportUrl(applied)
+  const url = getRankingExportUrl(draft)
   try {
     // #ifdef H5
     const response = await fetch(url)
@@ -434,13 +433,13 @@ async function exportCsv() {
 }
 
 // #ifdef H5
-function downloadHeatmapH5(data: HeatmapResponse) {
+async function downloadHeatmapH5(data: HeatmapResponse) {
   const canvas = document.createElement('canvas')
   canvas.width = 1600
   canvas.height = 1000
   const context = canvas.getContext('2d')
   if (!context) throw new Error('当前浏览器不支持图片导出')
-  renderHeatmap(context, canvas.width, canvas.height, data)
+  await renderHeatmap(context, canvas.width, canvas.height, data)
   const link = document.createElement('a')
   link.download = heatmapFilename(data.label)
   link.href = canvas.toDataURL('image/png')
@@ -526,7 +525,7 @@ async function renderHeatmapWeixin(data: HeatmapResponse) {
   result.node.height = Math.floor(result.height * backingScale)
   const context = result.node.getContext('2d')
   context.scale(backingScale, backingScale)
-  renderHeatmap(context, result.width, result.height, data)
+  await renderHeatmap(context, result.width, result.height, data)
   const filePath = await new Promise<string>((resolve, reject) => {
     uni.canvasToTempFilePath({
       canvasId: 'heatmap-canvas',
@@ -547,15 +546,15 @@ async function renderHeatmapWeixin(data: HeatmapResponse) {
 // #endif
 
 async function exportHeatmap() {
-  if (heatmapLoading.value || filtersDirty.value) return
-  if (!applied.district) {
-    error.value = '请先应用一个行政区，再导出价格图'
+  if (heatmapLoading.value) return
+  if (!(draft.district || applied.district)) {
+    error.value = '请先选择一个行政区，再导出价格图'
     return
   }
   heatmapLoading.value = true
   error.value = ''
   try {
-    const data = await getHeatmap(applied)
+    const data = await getHeatmap(draft)
     if (!data.bounds) throw new Error('当前范围没有可导出的数据')
     // #ifdef H5
     downloadHeatmapH5(data)
@@ -745,7 +744,7 @@ onLoad(async () => {
             :streets="meta?.streets ?? []"
             :csv-loading="csvLoading"
             :heatmap-loading="heatmapLoading"
-            :can-export="!filtersDirty"
+            :can-export="!!(draft.district || applied.district)"
             @update="updateDraft"
             @apply="applyFilters"
             @reset="resetDraft"
@@ -884,7 +883,7 @@ onLoad(async () => {
         :streets="meta?.streets ?? []"
         :csv-loading="csvLoading"
         :heatmap-loading="heatmapLoading"
-        :can-export="!filtersDirty"
+        :can-export="!!(draft.district || applied.district)"
         @update="updateDraft"
         @apply="applyFilters"
         @reset="resetDraft"
