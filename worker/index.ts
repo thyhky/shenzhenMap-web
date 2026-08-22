@@ -1010,7 +1010,7 @@ async function handleSchools(env: Env): Promise<Response> {
     type: 'FeatureCollection',
     scope: 'school-scopes',
     features: result.results.map(schoolFeature),
-  }, { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=3600' } })
+  }, { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=86400' } })
 }
 
 async function handleSchoolZones(env: Env): Promise<Response> {
@@ -1034,7 +1034,7 @@ async function handleSchoolZones(env: Env): Promise<Response> {
       },
       geometry: JSON.parse(row.geometry),
     })),
-  }, { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=3600' } })
+  }, { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=86400' } })
 }
 
 async function handleApi(request: Request, env: Env): Promise<Response> {

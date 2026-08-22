@@ -455,6 +455,8 @@ interface WeixinCanvasNode {
   createImage(): { src: string; onload: (() => void) | null; onerror: (() => void) | null }
 }
 
+const weixinTileImageCache = new Map<string, Promise<unknown | null>>()
+
 function queryHeatmapCanvas(attempt = 0): Promise<{ node: WeixinCanvasNode; width: number; height: number }> {
   return new Promise((resolve, reject) => {
     uni.createSelectorQuery()
@@ -526,12 +528,22 @@ async function renderHeatmapWeixin(data: HeatmapResponse) {
   result.node.height = Math.floor(result.height * backingScale)
   const context = result.node.getContext('2d')
   context.scale(backingScale, backingScale)
-  const loadTileImage = (src: string) => new Promise<unknown | null>((resolve) => {
-    const image = result.node.createImage()
-    image.onload = () => resolve(image)
-    image.onerror = () => resolve(null)
-    image.src = src
-  })
+  const loadTileImage = (src: string) => {
+    let pending = weixinTileImageCache.get(src)
+    if (!pending) {
+      pending = new Promise<unknown | null>((resolve) => {
+        const image = result.node.createImage()
+        image.onload = () => resolve(image)
+        image.onerror = () => {
+          weixinTileImageCache.delete(src)
+          resolve(null)
+        }
+        image.src = src
+      })
+      weixinTileImageCache.set(src, pending)
+    }
+    return pending
+  }
   await renderHeatmap(context, result.width, result.height, data, { tileProvider: 'tencent', loadTileImage })
   const filePath = await new Promise<string>((resolve, reject) => {
     uni.canvasToTempFilePath({

@@ -155,6 +155,24 @@ export async function renderHeatmap(
   context.fillText(attr, width - padding - attrW + 8, height - padding * 0.37)
 }
 
+async function fetchTile(
+  provider: 'osm' | 'tencent',
+  loadTileImage: ((src: string) => Promise<unknown | null>) | undefined,
+  z: number,
+  x: number,
+  y: number,
+  attempts = 2,
+): Promise<unknown | null> {
+  const src = provider === 'tencent' ? TENCENT_TILE(z, x, y) : OSM_TILE(z, x, y)
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const img = provider === 'tencent'
+      ? (loadTileImage ? await loadTileImage(src) : null)
+      : await loadOsmTile(z, x, y)
+    if (img) return img
+  }
+  return null
+}
+
 async function drawTileBackground(
   context: DrawingContext,
   provider: 'osm' | 'tencent',
@@ -183,19 +201,23 @@ async function drawTileBackground(
   const x1 = lngToTileX(sourceBounds.east, zoom)
   const y0 = latToTileY(sourceBounds.north, zoom)
   const y1 = latToTileY(sourceBounds.south, zoom)
-  let drawn = false
+  const tiles: Array<[number, number]> = []
   for (let tx = x0; tx <= x1; tx++) {
-    for (let ty = y0; ty <= y1; ty++) {
-      const wrappedX = ((tx % 2 ** zoom) + 2 ** zoom) % 2 ** zoom
-      const img = provider === 'tencent'
-        ? (loadTileImage ? await loadTileImage(TENCENT_TILE(zoom, wrappedX, ty)) : null)
-        : await loadOsmTile(zoom, wrappedX, ty)
-      if (!img) continue
-      const [sx, sy] = project([tileXToLng(tx, zoom), tileYToLat(ty, zoom)])
-      const [ex, ey] = project([tileXToLng(tx + 1, zoom), tileYToLat(ty + 1, zoom)])
-      context.drawImage(img, Math.min(sx, ex), Math.min(sy, ey), Math.abs(ex - sx), Math.abs(ey - sy))
-      drawn = true
-    }
+    for (let ty = y0; ty <= y1; ty++) tiles.push([tx, ty])
+  }
+  const loaded = await Promise.all(tiles.map(async ([tx, ty]) => {
+    const wrappedX = ((tx % 2 ** zoom) + 2 ** zoom) % 2 ** zoom
+    const img = await fetchTile(provider, loadTileImage, zoom, wrappedX, ty)
+    if (!img) return null
+    const [sx, sy] = project([tileXToLng(tx, zoom), tileYToLat(ty, zoom)])
+    const [ex, ey] = project([tileXToLng(tx + 1, zoom), tileYToLat(ty + 1, zoom)])
+    return { img, x: Math.min(sx, ex), y: Math.min(sy, ey), w: Math.abs(ex - sx), h: Math.abs(ey - sy) }
+  }))
+  let drawn = false
+  for (const tile of loaded) {
+    if (!tile) continue
+    context.drawImage(tile.img, tile.x, tile.y, tile.w, tile.h)
+    drawn = true
   }
   return drawn
 }

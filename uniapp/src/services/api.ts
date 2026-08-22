@@ -68,8 +68,13 @@ export function resolveApiUrl(path: string) {
   return `${apiBase}${path}`
 }
 
-export function getMeta(): Promise<MetaResponse> {
-  return requestJson('/api/meta')
+let metaCache: MetaResponse | null = null
+
+export async function getMeta(): Promise<MetaResponse> {
+  if (metaCache) return metaCache
+  const response = await requestJson<MetaResponse>('/api/meta')
+  metaCache = response
+  return response
 }
 
 export function getMapData(viewport: Viewport, filters: EstateFilters, page = 1): Promise<MapResponse> {
