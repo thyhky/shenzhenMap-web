@@ -47,6 +47,7 @@ let schoolZoneLayer: L.GeoJSON | null = null
 let selectionLayer: L.LayerGroup | null = null
 let viewportTimer: ReturnType<typeof setTimeout> | null = null
 let resizeObserver: ResizeObserver | null = null
+let lastDrawZoom = -1
 
 const priceBands = [35000, 50000, 70000, 90000, 120000]
 const colors = ['#2f5fb3', '#10a09a', '#79a82f', '#e3b657', '#df7b45', '#bb3e45']
@@ -386,8 +387,11 @@ onMounted(async () => {
   selectionLayer = L.layerGroup().addTo(map)
   map.on('moveend', scheduleViewport)
   map.on('zoomend', () => {
-    drawPoints()
-    drawSchools()
+    if (map && map.getZoom() !== lastDrawZoom) {
+      lastDrawZoom = map.getZoom()
+      drawPoints()
+      drawSchools()
+    }
     scheduleViewport()
   })
   resizeObserver = new ResizeObserver(() => map?.invalidateSize({ pan: false }))
@@ -397,6 +401,7 @@ onMounted(async () => {
   drawSchools()
   drawSchoolZones()
   drawSelection()
+  lastDrawZoom = map.getZoom()
   emitViewport()
 })
 

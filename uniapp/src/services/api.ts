@@ -18,6 +18,8 @@ let apiBase = ''
 let streetBoundaryCache: StreetFeatureCollection | null = null
 let schoolCache: SchoolFeatureCollection | null = null
 let schoolZoneCache: SchoolZoneFeatureCollection | null = null
+let estateCache: Map<number, EstateDetail> | null = null
+let historyCache: Map<string, PriceHistoryResponse> | null = null
 
 // #ifdef MP-WEIXIN
 apiBase = 'https://map.okzer.xyz'
@@ -28,6 +30,7 @@ function requestJson<T>(path: string, data: Record<string, string | number> = {}
     uni.request({
       url: `${apiBase}${path}`,
       data,
+      timeout: 20000,
       success: (response) => {
         if (response.statusCode >= 200 && response.statusCode < 300) {
           resolve(response.data as T)
@@ -119,12 +122,23 @@ export function getRankingExportUrl(filters: EstateFilters) {
   return resolveApiUrl(`/api/export/rent-yield.csv?${query}`)
 }
 
-export function getEstate(id: number): Promise<EstateDetail> {
-  return requestJson(`/api/estates/${id}`)
+export async function getEstate(id: number): Promise<EstateDetail> {
+  estateCache ??= new Map()
+  const cached = estateCache.get(id)
+  if (cached) return cached
+  const response = await requestJson<EstateDetail>(`/api/estates/${id}`)
+  estateCache.set(id, response)
+  return response
 }
 
-export function getEstatePriceHistory(id: number, days: HistoryDays): Promise<PriceHistoryResponse> {
-  return requestJson(`/api/estates/${id}/price-history`, { days, limit: 100 })
+export async function getEstatePriceHistory(id: number, days: HistoryDays): Promise<PriceHistoryResponse> {
+  historyCache ??= new Map()
+  const key = `${id}:${days}`
+  const cached = historyCache.get(key)
+  if (cached) return cached
+  const response = await requestJson<PriceHistoryResponse>(`/api/estates/${id}/price-history`, { days, limit: 100 })
+  historyCache.set(key, response)
+  return response
 }
 
 export async function getStreetBoundaries(): Promise<StreetFeatureCollection> {

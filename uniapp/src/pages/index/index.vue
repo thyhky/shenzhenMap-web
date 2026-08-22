@@ -687,6 +687,14 @@ function focusMap(view: { latitude: number; longitude: number; zoom: number }) {
 }
 
 function updateViewport(next: MapViewport) {
+  const previous = viewport.value
+  const span = Math.max(previous.east - previous.west, previous.north - previous.south)
+  const tolerance = span * 0.01
+  const trivial = next.zoom === previous.zoom
+    && Math.abs(next.west - previous.west) < tolerance
+    && Math.abs(next.south - previous.south) < tolerance
+    && Math.abs(next.east - previous.east) < tolerance
+    && Math.abs(next.north - previous.north) < tolerance
   viewport.value = {
     west: next.west,
     south: next.south,
@@ -694,6 +702,7 @@ function updateViewport(next: MapViewport) {
     north: next.north,
     zoom: next.zoom,
   }
+  if (trivial) return
   if (!applied.keyword.trim()) void loadMap()
 }
 

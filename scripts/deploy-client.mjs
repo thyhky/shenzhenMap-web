@@ -43,6 +43,15 @@ await runWrangler(wrangler, ['deploy', '--config', target.config], {
 
 if (mode !== 'preview') {
   try {
+    console.error('Syncing local data snapshot before verification...')
+    execFileSync(process.execPath, [resolve(projectRoot, 'scripts', 'sync-data.mjs')], {
+      cwd: projectRoot,
+      stdio: 'inherit',
+    })
+  } catch {
+    console.error('Local data sync skipped (best-effort); continuing with verification')
+  }
+  try {
     execFileSync(process.execPath, [resolve(projectRoot, 'scripts', 'verify-deployment.mjs')], {
       cwd: projectRoot,
       stdio: 'inherit',
