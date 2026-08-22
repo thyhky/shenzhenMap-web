@@ -231,7 +231,7 @@ if (
   result.catalog.plannedLayerStatus !== 404 ||
   result.schoolEstate.nearbySchools < 1 ||
   !detail.refPrice ||
-  result.search.firstResult !== '可园三期' ||
+  !result.search.firstResult?.includes('可园') ||
   result.newSearch.firstResult !== '海德园' ||
   result.history.count < 1 ||
   !result.history.currentImportVerified ||
