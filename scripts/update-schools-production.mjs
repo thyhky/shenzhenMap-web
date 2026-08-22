@@ -20,6 +20,9 @@ One-time production school update: rebuild prepared school snapshots -> validate
 
   --yes                           confirm the production D1 update
   --dry-run                       check paths and print the plan without running commands
+  --refresh-sources               re-collect official school sources before assembling
+                                  (runs fetch_house_prices/refresh_school_sources.py;
+                                   requires AMAP_KEY and network access)
   --allow-school-id-replacements  allow reviewed school ID replacement
   --allow-school-content-changes  allow reviewed same-date school content changes
   --allow-school-geometry-warnings allow reviewed new or changed geometry warnings
@@ -29,7 +32,7 @@ One-time production school update: rebuild prepared school snapshots -> validate
 }
 
 const knownFlags = new Set([
-  '--yes', '--dry-run', '--allow-school-id-replacements', '--allow-school-content-changes', '--allow-school-geometry-warnings', '--help', '-h',
+  '--yes', '--dry-run', '--refresh-sources', '--allow-school-id-replacements', '--allow-school-content-changes', '--allow-school-geometry-warnings', '--help', '-h',
 ])
 const unknown = args.filter((argument) => (
   !knownFlags.has(argument)
@@ -39,6 +42,10 @@ const unknown = args.filter((argument) => (
 if (unknown.length) throw new Error(`Unknown argument(s): ${unknown.join(', ')} (see --help)`)
 if (!flag('--yes') && !flag('--dry-run')) {
   throw new Error('Production update not confirmed. Re-run with --yes after reviewing the school sources.')
+}
+const refreshSources = flag('--refresh-sources')
+if (refreshSources && !flag('--dry-run') && !process.env.AMAP_KEY) {
+  throw new Error('AMAP_KEY environment variable is required for --refresh-sources (collects Guangming geocodes and zone polygons).')
 }
 
 const workshopRoot = resolve(valueOf('--workshop') ?? process.env.DATA_WORKSHOP_ROOT ?? resolve(projectRoot, '..', 'fetch_house_prices'))
@@ -59,8 +66,8 @@ if (flag('--dry-run')) {
     workshopRoot,
     webmapRoot,
     python,
-    rebuildsPreparedSnapshots: true,
-    collectsOfficialSources: false,
+    rebuildsPreparedSnapshots: !refreshSources,
+    collectsOfficialSources: refreshSources,
     uploadsToCloudflareD1: true,
     deploysClient: false,
   }, null, 2))
@@ -93,7 +100,14 @@ try {
   await run('production migration preflight', process.execPath, [
     resolve(projectRoot, 'scripts', 'check-production-migrations.mjs'),
   ], projectRoot)
-  await run('rebuild prepared school snapshots', python, ['build_web_map_data.py'], workshopRoot)
+  if (refreshSources) {
+    await run('refresh school sources', python, ['refresh_school_sources.py'], workshopRoot, {
+      ...process.env,
+      AMAP_KEY: process.env.AMAP_KEY,
+    })
+  } else {
+    await run('rebuild prepared school snapshots', python, ['build_web_map_data.py'], workshopRoot)
+  }
   await run('protected school D1 pipeline', process.execPath, [
     pipeline,
     '--profile=schools',

@@ -291,7 +291,13 @@ run-school-data-update-once.bat
 run-estate-price-update-once.bat
 ```
 
-`run-school-data-update-once.bat` 会先运行数据车间的 `build_web_map_data.py`，然后只同步和写入 `schools`、`school_zones` 及对应版本元数据。它不会抓取教育局数据；运行前应先更新 `fetch_house_prices` 中的学校/学区源文件。学校 ID、同发布日期内容或几何警告发生受控变化时，使用脚本提示的人工审核参数。
+`run-school-data-update-once.bat` 会先运行数据车间的 `build_web_map_data.py`，然后只同步和写入 `schools`、`school_zones` 及对应版本元数据。它默认不会抓取教育局数据；运行前应先更新 `fetch_house_prices` 中的学校/学区源文件。如需自动重新采集官方源，再组装并上传，使用显式开关（需 `AMAP_KEY` 与网络）：
+
+```powershell
+npm run update:schools -- --yes --refresh-sources
+```
+
+`--refresh-sources` 会在组装前调用 `fetch_house_prices/refresh_school_sources.py`，按依赖顺序跑完：抓取光明区政府划片表、高德地理编码、乐有家学校详情与补充、构建光明学区近似范围、构建南山学校（需你放置的解密源 `ns_xqdt_dec.json` 或你自写的 `fetch_ns_school_zones.py`）、组装 `webmap/schools.geojson`。仅采集本地、不触碰生产。单独做本地采集可用 `fetch_house_prices/refresh-school-sources.bat`。学校 ID、同发布日期内容或几何警告发生受控变化时，使用脚本提示的人工审核参数。
 
 `run-estate-price-update-once.bat` 会执行常规小区采集、空间归属、官方参考价匹配和 webmap 构建，然后只写入 `estates`、`streets` 及对应版本元数据。`price_history` 由 D1 触发器生成同日幂等快照，并在成功后清理 90 天前记录；学校和学区表不会改变。
 
