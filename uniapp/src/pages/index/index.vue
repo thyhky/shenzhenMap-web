@@ -531,6 +531,7 @@ async function renderHeatmapWeixin(data: HeatmapResponse) {
   const loadTileImage = (src: string) => {
     let pending = weixinTileImageCache.get(src)
     if (!pending) {
+      if (weixinTileImageCache.size > 400) weixinTileImageCache.clear()
       pending = new Promise<unknown | null>((resolve) => {
         const image = result.node.createImage()
         image.onload = () => resolve(image)

@@ -107,10 +107,18 @@ export function getRanking(filters: EstateFilters, sort: RankingSort, page = 1):
   })
 }
 
-export function getHeatmap(filters: EstateFilters): Promise<HeatmapResponse> {
-  return requestJson('/api/heatmap', {
+let heatmapCache: Map<string, HeatmapResponse> | null = null
+
+export async function getHeatmap(filters: EstateFilters): Promise<HeatmapResponse> {
+  heatmapCache ??= new Map()
+  const key = queryString(baseFilterParams(filters))
+  const cached = heatmapCache.get(key)
+  if (cached) return cached
+  const response = await requestJson<HeatmapResponse>('/api/heatmap', {
     ...baseFilterParams(filters),
   })
+  heatmapCache.set(key, response)
+  return response
 }
 
 export function getRankingExportUrl(filters: EstateFilters) {
