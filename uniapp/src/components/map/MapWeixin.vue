@@ -114,7 +114,7 @@ function selectionCallout(item: MapSelection): { title: string; lines: string[] 
 
 function itemRadius(item: MapItem) {
   if (item.kind === 'cluster') return Math.min(1100, 160 + Math.sqrt(item.count) * 32)
-  return Math.max(12, Math.min(70, 70 / Math.pow(2, Math.max(0, props.zoom - 12) / 2)))
+  return 2.5
 }
 
 const mapCenter = computed(() => wgs84ToGcj02(props.latitude, props.longitude))
@@ -163,7 +163,7 @@ const schoolCircles = computed(() => {
     return {
       latitude: coordinate.latitude,
       longitude: coordinate.longitude,
-      radius: 170,
+      radius: 2.5,
       color: school.properties.level === 'junior' ? '#c93f77' : '#6d3fc9',
       fillColor: school.properties.level === 'junior' ? '#f0c6d5' : '#d5c9f2',
       strokeWidth: 2,
@@ -265,8 +265,8 @@ const polygonState = computed(() => {
       sourceRings,
       zonePointLimit,
       junior ? '#c93f77' : '#6d3fc9',
-      junior ? '#f8e4eb88' : '#eee9fa88',
-      2,
+      junior ? '#f8e4eb1f' : '#eee9fa1f',
+      3,
     )
     if (rings.length) empty.zoneHits.push({ feature, rings })
   })
@@ -283,9 +283,9 @@ interface WxMarker {
   id: number
   latitude: number
   longitude: number
-  width: number
-  height: number
-  alpha: number
+  width?: number
+  height?: number
+  alpha?: number
   label?: { content: string; color: string; fontSize: number; anchorX: number; anchorY: number }
   callout?: {
     content: string
@@ -329,9 +329,6 @@ const selectedMarker = computed<WxMarker | null>(() => {
     id: 2000000,
     latitude: coordinate.latitude,
     longitude: coordinate.longitude,
-    width: 1,
-    height: 1,
-    alpha: 0,
     callout: {
       content: [title, ...lines].join('\n'),
       color: '#17343a',
