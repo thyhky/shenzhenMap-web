@@ -12,6 +12,7 @@ import type {
 } from '@/domain/types'
 import { getCachedSchools, getCachedSchoolZones, getCachedStreetBoundaries } from '@/services/api'
 import { gcj02ToWgs84, wgs84ToGcj02 } from '@/utils/coordinates'
+import { priceColor, priceColorRgba } from '@/utils/priceBands'
 import {
   geometryBounds,
   intersectsViewport,
@@ -58,28 +59,9 @@ const DOUBLE_TAP_WINDOW_MS = 260
 const MARKER_TAP_GUARD_MS = 120
 const PROGRAM_VIEWPORT_GUARD_MS = 700
 
-const priceBands = [35000, 50000, 70000, 90000, 120000]
-const colors = ['#2f5fb3', '#10a09a', '#79a82f', '#e3b657', '#df7b45', '#bb3e45']
-
-function priceColor(price: number | null) {
-  if (!price) return '#7b8787'
-  const index = priceBands.findIndex((limit) => price < limit)
-  return colors[index === -1 ? colors.length - 1 : index]
-}
-
-function priceFillColor(price: number | null) {
-  if (!price) return '#b7c0bd'
-  if (price < 35000) return '#9cb7e6'
-  if (price < 50000) return '#8ed8d2'
-  if (price < 70000) return '#bfd98f'
-  if (price < 90000) return '#ecd28f'
-  if (price < 120000) return '#eab08f'
-  return '#df9297'
-}
-
-function priceText(price: number | null) {
-  return price ? `${(price / 10000).toFixed(1)}万/㎡` : '暂无价格'
-}
+const priceText = (price: number | null) => (
+  price ? `${(price / 10000).toFixed(1)}万/㎡` : '暂无价格'
+)
 
 function selectionCoordinate(item: MapSelection): { latitude: number; longitude: number } | null {
   if ('kind' in item) return wgs84ToGcj02(item.lat, item.lng)
@@ -170,7 +152,7 @@ const estateCircles = computed(() => visibleMapItems.value.map((item) => {
     longitude: coordinate.longitude,
     radius: itemRadius(item),
     color: priceColor(item.kind === 'cluster' ? item.avgPrice : item.price),
-    fillColor: priceFillColor(item.kind === 'cluster' ? item.avgPrice : item.price),
+    fillColor: priceColorRgba(item.kind === 'cluster' ? item.avgPrice : item.price),
     strokeWidth: 1,
   }
 }))

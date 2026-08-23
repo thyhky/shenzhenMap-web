@@ -1,5 +1,6 @@
 import type { HeatmapResponse, Position } from '@/domain/types'
 import { wgs84ToGcj02 } from '@/utils/coordinates'
+import { PRICE_BANDS, priceColorRgba } from '@/utils/priceBands'
 
 export interface DrawingContext {
   fillStyle: unknown
@@ -16,16 +17,36 @@ export interface DrawingContext {
   fillText(text: string, x: number, y: number): void
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void
   drawImage(image: unknown, x: number, y: number, w: number, h: number): void
+  measureText(text: string): { width: number }
+  textBaseline: string
 }
 
 function heatmapColor(price: number | null) {
-  if (!price) return 'rgba(92, 105, 109, 0.42)'
-  if (price < 35000) return 'rgba(47, 95, 179, 0.62)'
-  if (price < 50000) return 'rgba(16, 160, 154, 0.62)'
-  if (price < 70000) return 'rgba(121, 168, 47, 0.62)'
-  if (price < 90000) return 'rgba(227, 182, 87, 0.62)'
-  if (price < 120000) return 'rgba(223, 123, 69, 0.64)'
-  return 'rgba(187, 62, 69, 0.66)'
+  return priceColorRgba(price)
+}
+
+function drawPriceLegend(
+  context: DrawingContext,
+  x: number,
+  y: number,
+  width: number,
+  bands: typeof PRICE_BANDS,
+) {
+  const swatch = Math.max(12, Math.round(width * 0.013))
+  const gap = Math.max(8, Math.round(width * 0.008))
+  const fontPx = Math.max(9, Math.round(width * 0.0095))
+  context.font = `${fontPx}px sans-serif`
+  context.textBaseline = 'middle'
+  let cursor = x
+  const center = y + swatch / 2
+  bands.forEach((band) => {
+    context.fillStyle = band.rgba
+    context.fillRect(cursor, y, swatch, swatch)
+    context.fillStyle = '#3a474a'
+    context.fillText(band.label, cursor + swatch + 4, center)
+    cursor += swatch + 4 + context.measureText(band.label).width + gap
+  })
+  context.textBaseline = 'alphabetic'
 }
 
 const OSM_TILE = (z: number, x: number, y: number) =>
@@ -141,11 +162,13 @@ export async function renderHeatmap(
     context.fill()
   })
 
-  context.fillStyle = 'rgba(250, 246, 237, 0.92)'
-  context.fillRect(padding, height - padding * 0.62, Math.min(drawWidth, width * 0.5), padding * 0.36)
+  context.fillStyle = '#617074'
+  context.font = `${Math.max(10, Math.round(width * 0.009))}px sans-serif`
+  context.fillText('颜色：小区挂牌均价', padding, height - padding * 1.02)
+  drawPriceLegend(context, padding, height - padding * 0.92, width, PRICE_BANDS)
   context.fillStyle = '#617074'
   context.font = `${Math.max(9, Math.round(width * 0.0075))}px sans-serif`
-  context.fillText('颜色：小区挂牌均价；每个圆点代表一个小区；仅供研究参考', padding + 8, height - padding * 0.37)
+  context.fillText('每个圆点代表一个小区 · 仅供研究参考', padding, height - padding * 0.4)
 
   const attr = provider === 'tencent' ? '底图 © 腾讯地图' : '底图 © OpenStreetMap'
   const attrW = Math.max(width * 0.16, 120)

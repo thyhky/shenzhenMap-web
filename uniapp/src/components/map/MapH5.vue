@@ -13,6 +13,7 @@ import type {
   StreetFeature,
   StreetFeatureCollection,
 } from '@/domain/types'
+import { priceColor } from '@/utils/priceBands'
 
 const props = defineProps<{
   latitude: number
@@ -49,18 +50,9 @@ let viewportTimer: ReturnType<typeof setTimeout> | null = null
 let resizeObserver: ResizeObserver | null = null
 let lastDrawZoom = -1
 
-const priceBands = [35000, 50000, 70000, 90000, 120000]
-const colors = ['#2f5fb3', '#10a09a', '#79a82f', '#e3b657', '#df7b45', '#bb3e45']
-
-function priceColor(price: number | null) {
-  if (!price) return '#f7f1e6'
-  const index = priceBands.findIndex((limit) => price < limit)
-  return colors[index === -1 ? colors.length - 1 : index]
-}
-
-function priceText(price: number | null) {
-  return price ? `${(price / 10000).toFixed(1)}万/㎡` : '暂无价格'
-}
+const priceText = (price: number | null) => (
+  price ? `${(price / 10000).toFixed(1)}万/㎡` : '暂无价格'
+)
 
 function popupContent(title: string, lines: string[], action?: { label: string; run: () => void }) {
   const root = document.createElement('div')

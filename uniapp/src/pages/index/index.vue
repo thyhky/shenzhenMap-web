@@ -7,6 +7,7 @@ import BottomSheet from '@/components/BottomSheet.vue'
 import DetailSheet from '@/components/DetailSheet.vue'
 import FilterSheet from '@/components/FilterSheet.vue'
 import LayerControl from '@/components/LayerControl.vue'
+import PriceLegend from '@/components/PriceLegend.vue'
 import MapBriefCard from '@/components/MapBriefCard.vue'
 import MethodologyModal from '@/components/MethodologyModal.vue'
 import ResultsSheet from '@/components/ResultsSheet.vue'
@@ -811,6 +812,7 @@ onLoad(async () => {
           :loading="layerLoading"
           @toggle="toggleLayer"
         />
+        <PriceLegend absolute />
         <view class="desktop-reopen">
           <button v-if="!desktopFiltersOpen" @click="desktopFiltersOpen = true">打开筛选</button>
           <button v-if="!desktopRightOpen" @click="desktopRightOpen = true">打开侧栏</button>
@@ -895,6 +897,7 @@ onLoad(async () => {
       @close="clearSelection"
       @details="openDetails"
     />
+    <PriceLegend />
     <!-- #endif -->
 
     <view v-if="error" class="error-toast">{{ error }}</view>
