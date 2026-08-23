@@ -13,7 +13,6 @@ import type {
 import { getCachedSchools, getCachedSchoolZones, getCachedStreetBoundaries } from '@/services/api'
 import { gcj02ToWgs84, wgs84ToGcj02 } from '@/utils/coordinates'
 import { priceColor, priceColorRgba } from '@/utils/priceBands'
-import transparentMarker from '@/static/transparent.png'
 import {
   geometryBounds,
   intersectsViewport,
@@ -35,7 +34,6 @@ const props = defineProps<{
   focusRevision: number
   selected: MapSelection | null
   selectionRevision: number
-  showSelectionPopup: boolean
 }>()
 
 const emit = defineEmits<{
@@ -94,43 +92,6 @@ function selectionCoordinate(item: MapSelection): { latitude: number; longitude:
     (Math.min(...latitudes) + Math.max(...latitudes)) / 2,
     (Math.min(...longitudes) + Math.max(...longitudes)) / 2,
   )
-}
-
-const priceText = (price: number | null) => (
-  price ? `${(price / 10000).toFixed(1)}万/㎡` : '暂无价格'
-)
-
-function selectionCallout(item: MapSelection): { title: string; lines: string[] } {
-  if ('kind' in item) {
-    if (item.kind === 'cluster') {
-      return {
-        title: `${item.count} 个小区`,
-        lines: [
-          `${item.pricedCount} 个有有效价格`,
-          `均价 ${priceText(item.avgPrice)}`,
-          '地图已放大，可继续选择具体小区',
-        ],
-      }
-    }
-    return {
-      title: item.name,
-      lines: [
-        `均价 ${priceText(item.price)}`,
-        `租售比 ${item.rentYield == null ? '暂无数据' : `${item.rentYield.toFixed(2)}%`}`,
-        `${item.district} · ${item.street}`,
-      ],
-    }
-  }
-  if (item.geometry.type === 'Point') {
-    return {
-      title: item.properties.name,
-      lines: [`${item.properties.levelLabel} · ${item.properties.district}`, '点击查看招生范围与咨询电话'],
-    }
-  }
-  return {
-    title: item.properties.name,
-    lines: [`${item.properties.levelLabel} · ${item.properties.district}`, '查看招生范围'],
-  }
 }
 
 function itemRadius(item: MapItem) {
@@ -307,7 +268,6 @@ interface WxMarker {
   width: number
   height: number
   alpha: number
-  iconPath?: string
   label?: { content: string; color: string; fontSize: number; anchorX: number; anchorY: number }
   callout?: {
     content: string
@@ -358,36 +318,7 @@ const selectedCircle = computed(() => {
   }
 })
 
-const selectedMarker = computed<WxMarker | null>(() => {
-  void props.selectionRevision
-  if (!props.selected || !props.showSelectionPopup) return null
-  const coordinate = selectionCoordinate(props.selected)
-  if (!coordinate) return null
-  const { title, lines } = selectionCallout(props.selected)
-  return {
-    id: 2000000,
-    latitude: coordinate.latitude,
-    longitude: coordinate.longitude,
-    width: 1,
-    height: 1,
-    alpha: 1,
-    iconPath: transparentMarker,
-    callout: {
-      content: [title, ...lines].join('\n'),
-      color: '#17343a',
-      fontSize: 12,
-      borderRadius: 8,
-      bgColor: '#fffdf8',
-      padding: 10,
-      display: 'ALWAYS',
-      textAlign: 'left',
-    },
-  }
-})
-
-const markers = computed<WxMarker[]>(() => (
-  clusterMarkers.value.concat(selectedMarker.value ? [selectedMarker.value] : [])
-))
+const markers = computed<WxMarker[]>(() => clusterMarkers.value)
 
 function selectItem(item: MapSelection) {
   emit('select', item)
