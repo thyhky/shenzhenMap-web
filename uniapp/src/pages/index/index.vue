@@ -879,6 +879,7 @@ onLoad(async () => {
       :focus-revision="focusRevision"
       :selected="selected"
       :selection-revision="selectionRevision"
+      :show-selection-popup="showSelectionPopup"
       @select="selectMapItem"
       @focus="focusMap"
       @viewport-change="updateViewport"
