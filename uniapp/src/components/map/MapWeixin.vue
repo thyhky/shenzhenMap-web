@@ -34,7 +34,6 @@ const props = defineProps<{
   focusRevision: number
   selected: MapSelection | null
   selectionRevision: number
-  showSelectionPopup: boolean
 }>()
 
 const emit = defineEmits<{
@@ -59,9 +58,25 @@ const DOUBLE_TAP_WINDOW_MS = 260
 const MARKER_TAP_GUARD_MS = 120
 const PROGRAM_VIEWPORT_GUARD_MS = 700
 
-const priceText = (price: number | null) => (
-  price ? `${(price / 10000).toFixed(1)}万/㎡` : '暂无价格'
-)
+const SHENZHEN_REFERENCE_LAT = 22.5
+function metersPerPixel(zoom: number): number {
+  return 156543.03392 * Math.cos((SHENZHEN_REFERENCE_LAT * Math.PI) / 180) / Math.pow(2, zoom)
+}
+function screenToMeters(screenPx: number, zoom: number): number {
+  return Math.max(2, screenPx * metersPerPixel(zoom))
+}
+function estateScreenRadius(zoom: number): number {
+  return Math.max(4.5, Math.min(8, 8 - (zoom - 12) * 0.45))
+}
+function clusterScreenRadius(count: number): number {
+  return Math.max(9, Math.min(30, 9 + Math.sqrt(count) * 1.6))
+}
+function selectionScreenRadius(item: MapSelection): number {
+  if ('kind' in item) {
+    return item.kind === 'cluster' ? clusterScreenRadius(item.count) : estateScreenRadius(props.zoom)
+  }
+  return 7
+}
 
 function selectionCoordinate(item: MapSelection): { latitude: number; longitude: number } | null {
   if ('kind' in item) return wgs84ToGcj02(item.lat, item.lng)
@@ -79,42 +94,9 @@ function selectionCoordinate(item: MapSelection): { latitude: number; longitude:
   )
 }
 
-function selectionCallout(item: MapSelection): { title: string; lines: string[] } {
-  if ('kind' in item) {
-    if (item.kind === 'cluster') {
-      return {
-        title: `${item.count} 个小区`,
-        lines: [
-          `${item.pricedCount} 个有有效价格`,
-          `均价 ${priceText(item.avgPrice)}`,
-          '地图已放大，可继续选择具体小区',
-        ],
-      }
-    }
-    return {
-      title: item.name,
-      lines: [
-        `均价 ${priceText(item.price)}`,
-        `租售比 ${item.rentYield == null ? '暂无数据' : `${item.rentYield.toFixed(2)}%`}`,
-        `${item.district} · ${item.street}`,
-      ],
-    }
-  }
-  if (item.geometry.type === 'Point') {
-    return {
-      title: item.properties.name,
-      lines: [`${item.properties.levelLabel} · ${item.properties.district}`, '点击查看招生范围与咨询电话'],
-    }
-  }
-  return {
-    title: item.properties.name,
-    lines: [`${item.properties.levelLabel} · ${item.properties.district}`, '查看招生范围'],
-  }
-}
-
 function itemRadius(item: MapItem) {
-  if (item.kind === 'cluster') return Math.min(1100, 160 + Math.sqrt(item.count) * 32)
-  return Math.max(12, Math.min(70, 70 / Math.pow(2, Math.max(0, props.zoom - 12) / 2)))
+  if (item.kind === 'cluster') return screenToMeters(clusterScreenRadius(item.count), props.zoom)
+  return screenToMeters(estateScreenRadius(props.zoom), props.zoom)
 }
 
 const mapCenter = computed(() => wgs84ToGcj02(props.latitude, props.longitude))
@@ -163,7 +145,7 @@ const schoolCircles = computed(() => {
     return {
       latitude: coordinate.latitude,
       longitude: coordinate.longitude,
-      radius: 170,
+      radius: screenToMeters(7, props.zoom),
       color: school.properties.level === 'junior' ? '#c93f77' : '#6d3fc9',
       fillColor: school.properties.level === 'junior' ? '#f0c6d5' : '#d5c9f2',
       strokeWidth: 2,
@@ -265,8 +247,8 @@ const polygonState = computed(() => {
       sourceRings,
       zonePointLimit,
       junior ? '#c93f77' : '#6d3fc9',
-      junior ? '#f8e4eb88' : '#eee9fa88',
-      2,
+      junior ? '#f8e4eb10' : '#eee9fa10',
+      3,
     )
     if (rings.length) empty.zoneHits.push({ feature, rings })
   })
@@ -319,32 +301,6 @@ const clusterMarkers = computed<WxMarker[]>(() => clusterItems.value.map((item, 
   }
 }))
 
-const selectedMarker = computed<WxMarker | null>(() => {
-  void props.selectionRevision
-  if (!props.selected || !props.showSelectionPopup) return null
-  const coordinate = selectionCoordinate(props.selected)
-  if (!coordinate) return null
-  const { title, lines } = selectionCallout(props.selected)
-  return {
-    id: 2000000,
-    latitude: coordinate.latitude,
-    longitude: coordinate.longitude,
-    width: 1,
-    height: 1,
-    alpha: 0,
-    callout: {
-      content: [title, ...lines].join('\n'),
-      color: '#17343a',
-      fontSize: 12,
-      borderRadius: 8,
-      bgColor: '#fffdf8',
-      padding: 10,
-      display: 'ALWAYS',
-      textAlign: 'left',
-    },
-  }
-})
-
 const selectedCircle = computed(() => {
   void props.selectionRevision
   if (!props.selected) return null
@@ -353,7 +309,7 @@ const selectedCircle = computed(() => {
   return {
     latitude: coordinate.latitude,
     longitude: coordinate.longitude,
-    radius: 60,
+    radius: screenToMeters(selectionScreenRadius(props.selected) * 1.7, props.zoom),
     strokeColor: '#ffffff',
     strokeWidth: 3,
     color: '#b64c39',
@@ -362,9 +318,7 @@ const selectedCircle = computed(() => {
   }
 })
 
-const markers = computed<WxMarker[]>(() => (
-  clusterMarkers.value.concat(selectedMarker.value ? [selectedMarker.value] : [])
-))
+const markers = computed<WxMarker[]>(() => clusterMarkers.value)
 
 function selectItem(item: MapSelection) {
   emit('select', item)
